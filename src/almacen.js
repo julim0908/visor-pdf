@@ -8,7 +8,32 @@ const path = require('path');
 const NOMBRE_ARCHIVO = '.practicos.json';
 const VERSION_FORMATO = 1;
 const ESTADOS = ['pendiente', 'en-progreso', 'hecho'];
-const PRACTICO_POR_DEFECTO = { estado: 'pendiente', notas: '' };
+const COLORES_RESALTADO = ['amarillo', 'verde', 'rosa', 'celeste'];
+
+// Función (y no un objeto fijo) para que cada práctico tenga su propia lista de resaltados.
+const practicoPorDefecto = () => ({ estado: 'pendiente', notas: '', resaltados: [] });
+
+// Un resaltado marca un tramo del texto de una página: [inicio, fin) son posiciones
+// dentro de ese texto, y `texto` es lo marcado (sirve para volver a ubicarlo si
+// cambia la forma en que se extrae el texto del PDF).
+function resaltadosValidos(lista) {
+  return (
+    Array.isArray(lista) &&
+    lista.every(
+      (r) =>
+        r &&
+        typeof r.id === 'string' &&
+        Number.isInteger(r.pagina) &&
+        r.pagina >= 1 &&
+        Number.isInteger(r.inicio) &&
+        Number.isInteger(r.fin) &&
+        r.inicio >= 0 &&
+        r.fin > r.inicio &&
+        COLORES_RESALTADO.includes(r.color) &&
+        typeof r.texto === 'string'
+    )
+  );
+}
 
 // Errores "esperables" (archivo corrupto, sin permisos, etc.) con un mensaje
 // pensado para mostrarle al usuario tal cual.
@@ -97,7 +122,7 @@ function leerPractico(uriPdf) {
   const uriJson = uriDelJson(uriPdf);
   return enCola(uriJson.toString(), async () => {
     const datos = await leerJson(uriJson);
-    return { ...PRACTICO_POR_DEFECTO, ...datos.practicos[claveDelPdf(uriPdf)] };
+    return { ...practicoPorDefecto(), ...datos.practicos[claveDelPdf(uriPdf)] };
   });
 }
 
@@ -109,13 +134,16 @@ function actualizarPractico(uriPdf, cambios) {
   if (cambios.notas !== undefined && typeof cambios.notas !== 'string') {
     return Promise.reject(new ErrorAlmacen('Las notas tienen que ser texto.'));
   }
+  if (cambios.resaltados !== undefined && !resaltadosValidos(cambios.resaltados)) {
+    return Promise.reject(new ErrorAlmacen('Los resaltados no tienen el formato esperado.'));
+  }
 
   const uriJson = uriDelJson(uriPdf);
   return enCola(uriJson.toString(), async () => {
     const datos = await leerJson(uriJson);
     const clave = claveDelPdf(uriPdf);
     const practico = {
-      ...PRACTICO_POR_DEFECTO,
+      ...practicoPorDefecto(),
       ...datos.practicos[clave],
       ...cambios,
       actualizado: new Date().toISOString()
@@ -134,12 +162,13 @@ function leerPracticosDeCarpeta(uriCarpeta, nombresPdf) {
   const uriJson = uriDelJsonDeCarpeta(uriCarpeta);
   return enCola(uriJson.toString(), async () => {
     const datos = await leerJson(uriJson);
-    return new Map(nombresPdf.map((nombre) => [nombre, { ...PRACTICO_POR_DEFECTO, ...datos.practicos[nombre] }]));
+    return new Map(nombresPdf.map((nombre) => [nombre, { ...practicoPorDefecto(), ...datos.practicos[nombre] }]));
   });
 }
 
 module.exports = {
   ESTADOS,
+  COLORES_RESALTADO,
   NOMBRE_ARCHIVO,
   ErrorAlmacen,
   alCambiar: emisorCambios.event,

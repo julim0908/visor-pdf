@@ -102,6 +102,35 @@ button:focus-visible,
   color: var(--vscode-descriptionForeground);
 }
 
+#campo-busqueda {
+  width: 150px;
+  padding: 2px 6px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  font: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+}
+
+#campo-busqueda::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+#campo-busqueda:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+#resultado-busqueda {
+  min-width: 56px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vscode-descriptionForeground);
+}
+
+#resultado-busqueda.sin-resultados {
+  color: var(--vscode-errorForeground);
+}
+
 /* Los tres botones de estado pegados, como un control segmentado. */
 #grupo-estado {
   gap: 0;
@@ -148,6 +177,171 @@ body.vscode-high-contrast-light .icono-estado.para-claro {
   min-height: 0;
 }
 
+/* Contiene al visor y a lo que flota encima (guía de lectura, menú del resaltador). */
+#zona-visor {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+}
+
+/* ---------- Guía de lectura ----------
+   Oscurece todo menos una franja horizontal. No recibe clicks (pointer-events:
+   none), así se puede seguir seleccionando y scrolleando debajo. */
+
+#guia-lectura {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.sombra-guia {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: rgb(0 0 0 / 0.45);
+}
+
+.sombra-guia.arriba {
+  top: 0;
+  height: var(--guia-y, 0px);
+}
+
+.sombra-guia.abajo {
+  top: calc(var(--guia-y, 0px) + var(--guia-alto, 0px));
+  bottom: 0;
+}
+
+.franja-guia {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--guia-y, 0px);
+  height: var(--guia-alto, 0px);
+  box-shadow: inset 0 -2px 0 var(--vscode-focusBorder);
+}
+
+/* ---------- Menús flotantes ("Aa" y resaltador) ---------- */
+
+.menu-flotante {
+  position: absolute;
+  z-index: 20;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border, transparent));
+  border-radius: 4px;
+  color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+  background: var(--vscode-editorWidget-background);
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgb(0 0 0 / 0.36));
+}
+
+#grupo-lectura {
+  position: relative;
+}
+
+/* Puntito en "Aa" cuando hay alguna opción de lectura activa. */
+#boton-lectura.con-opciones::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  vertical-align: middle;
+  background: currentColor;
+}
+
+#menu-lectura {
+  top: calc(100% + 6px);
+  right: 0;
+  width: 270px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.menu-titulo {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.opciones-papel {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+#barra-herramientas .opcion-papel,
+.opcion-papel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+  font-size: 12px;
+}
+
+.opcion-papel[aria-checked='true'] {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+}
+
+.muestra-papel {
+  width: 30px;
+  height: 20px;
+  border: 1px solid rgb(0 0 0 / 0.3);
+  border-radius: 3px;
+}
+
+.opcion-menu {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.opcion-menu select {
+  flex: 1;
+  padding: 2px 4px;
+  border: 1px solid var(--vscode-dropdown-border, transparent);
+  border-radius: 2px;
+  font: inherit;
+  color: var(--vscode-dropdown-foreground);
+  background: var(--vscode-dropdown-background);
+}
+
+.menu-ayuda {
+  margin: 0;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+#menu-resaltar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+}
+
+/* Los botones de color muestran la marca tal cual se ve sobre el papel. */
+#menu-resaltar .boton-color {
+  padding: 2px 6px;
+  background: #ffffff;
+}
+
+#menu-resaltar .boton-color[aria-pressed='true'] {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.muestra-marca {
+  padding: 0 2px;
+  font-weight: 600;
+  color: #000000;
+}
+
 #visor {
   flex: 1;
   min-width: 0;
@@ -172,9 +366,10 @@ body.vscode-high-contrast-light .icono-estado.para-claro {
 }
 
 .pagina-wrapper {
-  /* El papel del PDF se muestra blanco a propósito, como en cualquier
-     lector, independientemente del tema del editor. */
-  background: #ffffff;
+  position: relative;
+  /* El papel se muestra claro a propósito, como en cualquier lector,
+     sin importar el tema del editor. Su color se elige en el menú "Aa". */
+  background: var(--color-papel, #ffffff);
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
 }
 
@@ -182,6 +377,148 @@ body.vscode-high-contrast-light .icono-estado.para-claro {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* ---------- Color de papel ----------
+   El canvas se "multiplica" con el fondo de la página: lo blanco toma el color
+   elegido y lo negro sigue negro, así el texto conserva todo su contraste. */
+
+:root {
+  --papel-blanco: #ffffff;
+  --papel-crema: #fbf3dc;
+  --papel-durazno: #fde8d6;
+  --papel-celeste: #e3effa;
+  --papel-verde: #e4f3e1;
+  --papel-gris: #ebebeb;
+}
+
+#paginas[data-papel='crema'] { --color-papel: var(--papel-crema); }
+#paginas[data-papel='durazno'] { --color-papel: var(--papel-durazno); }
+#paginas[data-papel='celeste'] { --color-papel: var(--papel-celeste); }
+#paginas[data-papel='verde'] { --color-papel: var(--papel-verde); }
+#paginas[data-papel='gris'] { --color-papel: var(--papel-gris); }
+
+#paginas:not([data-papel='blanco']) .pagina-wrapper canvas {
+  mix-blend-mode: multiply;
+}
+
+.papel-blanco { background: var(--papel-blanco); }
+.papel-crema { background: var(--papel-crema); }
+.papel-durazno { background: var(--papel-durazno); }
+.papel-celeste { background: var(--papel-celeste); }
+.papel-verde { background: var(--papel-verde); }
+.papel-gris { background: var(--papel-gris); }
+
+/* ---------- Capa de texto (seleccionar, copiar y buscar) ----------
+   Reglas tomadas de pdfjs-dist/web/pdf_viewer.css (solo las que usamos).
+   Son <span> con texto transparente ubicados exactamente sobre el canvas. */
+
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 0;
+}
+
+.textLayer :is(span, br) {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+}
+
+.textLayer ::selection {
+  background: color-mix(in srgb, AccentColor, transparent 75%);
+}
+
+.textLayer br::selection {
+  background: transparent;
+}
+
+.textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+}
+
+.textLayer.selecting .endOfContent {
+  top: 0;
+}
+
+.textLayer[data-main-rotation='90'] {
+  transform: rotate(90deg) translateY(-100%);
+}
+
+.textLayer[data-main-rotation='180'] {
+  transform: rotate(180deg) translate(-100%, -100%);
+}
+
+.textLayer[data-main-rotation='270'] {
+  transform: rotate(270deg) translateX(-100%);
+}
+
+/* pdf.js agrega al <body> un canvas para medir texto; no tiene que ocupar lugar. */
+.hiddenCanvasElement {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* ---------- Marcas: búsqueda y resaltados ----------
+   Colores fijos (y no del tema) porque se dibujan sobre el papel del PDF;
+   semitransparentes para no tapar el texto. Las marcas van dentro de los <span>
+   de la capa de texto, así que no tienen que posicionarse aparte. */
+
+.textLayer span.coincidencia,
+.textLayer span.marca {
+  position: static;
+}
+
+.textLayer span.coincidencia {
+  border-radius: 3px;
+  background: rgb(150 60 200 / 0.25);
+}
+
+.textLayer span.coincidencia.actual {
+  background: rgb(255 110 0 / 0.55);
+  outline: 2px solid rgb(255 110 0 / 0.9);
+}
+
+/* Cada color tiene además su propia forma, para distinguirlos sin depender del
+   color: fondo, subrayado grueso, doble subrayado y subrayado punteado. */
+.marca-amarillo {
+  background: rgb(255 221 0 / 0.5);
+}
+
+.marca-verde {
+  box-shadow: inset 0 -0.2em 0 rgb(0 150 60 / 0.85);
+}
+
+.marca-rosa {
+  border-bottom: 0.24em double rgb(215 0 115 / 0.85);
+}
+
+.marca-celeste {
+  border-bottom: 0.14em dashed rgb(0 110 220 / 0.9);
 }
 
 #mensaje-error {
@@ -257,8 +594,9 @@ body.vscode-high-contrast-light .icono-estado.para-claro {
   align-self: flex-start;
 }
 
-#lista-anclas {
-  flex: 2 1 0;
+#lista-anclas,
+#lista-resaltados {
+  flex: 1 1 0;
   min-height: 0;
   margin: 0;
   padding: 0;
@@ -266,8 +604,9 @@ body.vscode-high-contrast-light .icono-estado.para-claro {
   list-style: none;
 }
 
-#lista-anclas button.ancla {
+#panel-notas button.ancla {
   display: flex;
+  align-items: baseline;
   gap: 8px;
   width: 100%;
   padding: 3px 6px;
@@ -276,8 +615,24 @@ body.vscode-high-contrast-light .icono-estado.para-claro {
   background: transparent;
 }
 
-#lista-anclas button.ancla:hover {
+#panel-notas button.ancla:hover {
   background: var(--vscode-list-hoverBackground);
+}
+
+/* La muestra del resaltado se dibuja sobre "papel" para que se vea igual que en el PDF. */
+#lista-resaltados .muestra-marca {
+  flex: none;
+  border-radius: 2px;
+  background-color: #ffffff;
+}
+
+#lista-resaltados .muestra-marca.marca-amarillo {
+  background: linear-gradient(rgb(255 221 0 / 0.5), rgb(255 221 0 / 0.5)), #ffffff;
+}
+
+#panel-notas button.ancla.perdido {
+  opacity: 0.6;
+  font-style: italic;
 }
 
 .pagina-ancla {
@@ -292,7 +647,8 @@ body.vscode-high-contrast-light .icono-estado.para-claro {
   text-overflow: ellipsis;
 }
 
-#ayuda-anclas {
+#ayuda-anclas,
+#ayuda-resaltados {
   margin: 0;
   font-size: 12px;
   color: var(--vscode-descriptionForeground);

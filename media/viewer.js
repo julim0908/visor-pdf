@@ -1,6 +1,10 @@
 // Código que corre DENTRO del webview (aislado, sin acceso a Node ni al filesystem).
 // Se encarga de: cargar pdf.js, pedirle el PDF a la extensión, renderizar páginas
-// y manejar la barra de herramientas (zoom y navegación).
+// y manejar la barra de herramientas (zoom, navegación y búsqueda).
+import { armarTextoPagina, normalizarConMapa, normalizarConsulta, buscarEnTexto } from './busqueda.js';
+import { marcarEnCapa } from './marcas.js';
+import { crearLectura } from './lectura.js';
+import { crearResaltador } from './resaltador.js';
 
 const vscode = acquireVsCodeApi();
 
@@ -25,6 +29,10 @@ const estadoGuardado = document.getElementById('estado-guardado');
 const botonAnclar = document.getElementById('boton-anclar');
 const listaAnclas = document.getElementById('lista-anclas');
 const ayudaAnclas = document.getElementById('ayuda-anclas');
+const campoBusqueda = document.getElementById('campo-busqueda');
+const resultadoBusqueda = document.getElementById('resultado-busqueda');
+const botonAnterior = document.getElementById('boton-anterior');
+const botonSiguiente = document.getElementById('boton-siguiente');
 
 const PASOS_ZOOM = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 const ZOOM_MINIMO = PASOS_ZOOM[0];
@@ -36,7 +44,10 @@ const MARGEN_HORIZONTAL = 48;
 const DESPLAZAMIENTO_DETECCION = 24;
 
 const estado = {
-  paginas: [], // { pagina, anchoBase, altoBase, wrapper, canvas, renderizada, tareaRender }
+  pdfjsLib: null,
+  // Por página: { pagina, anchoBase, altoBase, wrapper, canvas, renderizada, tareaRender,
+  //   promesaTexto, texto, capaTexto }
+  paginas: [],
   zoom: 1,
   modoZoom: 'ancho', // 'ancho': se recalcula si cambia el tamaño del visor. 'manual': fijo.
   paginaActual: 1,
@@ -49,6 +60,36 @@ const estado = {
   revisionNotas: 0
 };
 
+const busqueda = {
+  consulta: '', // ya normalizada (minúsculas, sin tildes)
+  coincidencias: [], // { pagina, rango: [inicio, fin] } en orden de lectura
+  porPagina: new Map(), // número de página -> [{ rango, indiceGlobal }]
+  indiceActual: -1,
+  // Cada búsqueda nueva invalida la anterior si todavía estaba recorriendo páginas.
+  version: 0
+};
+
+// Si queremos ir a una marca (coincidencia o resaltado) de una página que todavía
+// no tiene capa de texto, vamos a la página y nos desplazamos hasta la marca recién
+// cuando la capa se termina de armar: { pagina, selector } o null.
+let desplazamientoPendiente = null;
+
+const lectura = crearLectura({
+  visor,
+  paginas: contenedorPaginas,
+  obtenerZoom: () => estado.zoom,
+  guardar: (preferencias) => vscode.postMessage({ tipo: 'guardar-preferencias', preferencias })
+});
+
+// Lo que el resaltador necesita del visor.
+const resaltador = crearResaltador({
+  paginas: () => estado.paginas,
+  remarcarTodas: marcarTodas,
+  irAMarca,
+  agregarLineaANotas,
+  enviar: (mensaje) => vscode.postMessage(mensaje)
+});
+
 function mostrarError(mensaje) {
   elementoError.textContent = mensaje;
   elementoError.classList.remove('oculto');
@@ -59,6 +100,7 @@ async function iniciar() {
     // pdf.js es un módulo ES normal, lo importamos dinámicamente porque
     // su ruta depende de la URI que nos dio la extensión (asWebviewUri).
     const pdfjsLib = await import(configuracion.uriPdfjs);
+    estado.pdfjsLib = pdfjsLib;
 
     // El worker de pdf.js falla si se lo referencia directo por URL en un webview
     // (origen cruzado), así que lo bajamos nosotros y armamos un Blob URL local.
@@ -70,9 +112,14 @@ async function iniciar() {
       const mensaje = evento.data;
       if (mensaje.tipo === 'cargar-pdf') {
         cargarPdf(pdfjsLib, mensaje.datos, mensaje.vista);
+      } else if (mensaje.tipo === 'preferencias') {
+        lectura.aplicar(mensaje.preferencias);
       } else if (mensaje.tipo === 'datos-practico') {
         mostrarDatosPractico(mensaje.practico);
-        if (mensaje.inicial) cargarNotas(mensaje.practico);
+        if (mensaje.inicial) {
+          cargarNotas(mensaje.practico);
+          resaltador.cargar(mensaje.practico ? mensaje.practico.resaltados : [], Boolean(mensaje.practico));
+        }
       } else if (mensaje.tipo === 'notas-guardadas') {
         confirmarGuardadoNotas(mensaje.revision, true);
       } else if (mensaje.tipo === 'notas-no-guardadas') {
@@ -84,6 +131,8 @@ async function iniciar() {
 
     configurarBarra();
     configurarNotas();
+    configurarBusqueda();
+    configurarSeleccion();
 
     // Avisamos a la extensión que ya podemos recibir el PDF.
     vscode.postMessage({ tipo: 'listo' });
@@ -142,7 +191,10 @@ async function construirPaginas(documentoPdf) {
       wrapper,
       canvas,
       renderizada: false,
-      tareaRender: null
+      tareaRender: null,
+      promesaTexto: null,
+      texto: null,
+      capaTexto: null
     });
   }
 }
@@ -172,6 +224,9 @@ function aplicarZoom() {
   for (const info of estado.paginas) {
     info.wrapper.style.width = `${Math.floor(info.anchoBase * estado.zoom)}px`;
     info.wrapper.style.height = `${Math.floor(info.altoBase * estado.zoom)}px`;
+    // La capa de texto de pdf.js se dimensiona con esta variable CSS: así acompaña
+    // el zoom sin tener que volver a armarla.
+    info.wrapper.style.setProperty('--scale-factor', String(estado.zoom));
     info.renderizada = false;
   }
 
@@ -181,6 +236,7 @@ function aplicarZoom() {
   botonAjustarAncho.classList.toggle('activo', estado.modoZoom === 'ancho');
   botonAjustarAncho.setAttribute('aria-pressed', String(estado.modoZoom === 'ancho'));
 
+  lectura.alCambiarZoom();
   observarPaginas();
 }
 
@@ -212,10 +268,12 @@ function observarPaginas() {
       for (const entrada of entradas) {
         if (!entrada.isIntersecting) continue;
         const info = estado.paginas[Number(entrada.target.dataset.numeroPagina) - 1];
-        if (info && !info.renderizada) {
+        if (!info) continue;
+        if (!info.renderizada) {
           info.renderizada = true;
           renderizarPagina(info);
         }
+        if (!info.capaTexto) renderizarCapaTexto(info);
       }
     },
     { root: visor, rootMargin: '300px 0px' }
@@ -252,6 +310,64 @@ async function renderizarPagina(info) {
     }
   } finally {
     if (info.tareaRender === tarea) info.tareaRender = null;
+  }
+}
+
+// Texto de una página según pdf.js. Se pide una sola vez y lo comparten
+// la capa de texto y la búsqueda.
+function obtenerTextoPagina(info) {
+  if (!info.promesaTexto) {
+    info.promesaTexto = info.pagina.getTextContent().then(
+      (contenido) => {
+        const items = contenido.items.filter((item) => item.str !== undefined);
+        const { texto, inicios } = armarTextoPagina(items);
+        info.texto = {
+          contenido,
+          textoPlano: texto,
+          textosItems: items.map((item) => item.str),
+          inicios,
+          normalizado: normalizarConMapa(texto)
+        };
+        return info.texto;
+      },
+      (error) => {
+        info.promesaTexto = null; // que se pueda reintentar
+        throw error;
+      }
+    );
+  }
+  return info.promesaTexto;
+}
+
+// Capa de <span> transparentes ubicados exactamente sobre el texto del canvas:
+// es lo que permite seleccionar y copiar. Se arma una vez por página.
+async function renderizarCapaTexto(info) {
+  info.capaTexto = 'armando';
+  try {
+    const { contenido } = await obtenerTextoPagina(info);
+    const contenedor = document.createElement('div');
+    contenedor.className = 'textLayer';
+    const capa = new estado.pdfjsLib.TextLayer({
+      textContentSource: contenido,
+      container: contenedor,
+      viewport: info.pagina.getViewport({ scale: estado.zoom })
+    });
+    await capa.render();
+
+    // Como en el visor oficial de pdf.js: mejora la selección al arrastrar
+    // más allá del último renglón.
+    const finDeContenido = document.createElement('div');
+    finDeContenido.className = 'endOfContent';
+    contenedor.append(finDeContenido);
+    registrarCapaSeleccionable(contenedor, finDeContenido);
+
+    info.wrapper.append(contenedor);
+    info.capaTexto = { contenedor, divs: capa.textDivs };
+    marcarPagina(info);
+  } catch (error) {
+    // Sin capa de texto la página se ve igual; solo no se puede seleccionar.
+    info.capaTexto = null;
+    console.warn(`Capa de texto de la página ${info.wrapper.dataset.numeroPagina}:`, error);
   }
 }
 
@@ -377,6 +493,20 @@ function alEditarNotas() {
   actualizarListaAnclas();
 }
 
+// Agrega una línea al final de las notas (y abre el panel para que se vea).
+function agregarLineaANotas(linea) {
+  if (campoNotas.disabled) return;
+  if (!estado.panelNotasVisible) {
+    mostrarPanelNotas(true);
+    guardarVista();
+  }
+  const texto = campoNotas.value;
+  const separador = texto === '' || texto.endsWith('\n') ? '' : '\n';
+  campoNotas.value = `${texto}${separador}${linea}`;
+  campoNotas.scrollTop = campoNotas.scrollHeight;
+  alEditarNotas();
+}
+
 function confirmarGuardadoNotas(revision, guardadoOk) {
   // Si se siguió escribiendo después de esa revisión, todavía falta otro guardado.
   if (revision !== estado.revisionNotas) return;
@@ -446,6 +576,258 @@ function configurarNotas() {
   botonAnclar.addEventListener('click', anclarLineaActual);
 }
 
+// ---------- Búsqueda ----------
+
+async function buscar(texto) {
+  const version = ++busqueda.version;
+  busqueda.consulta = normalizarConsulta(texto);
+  if (!busqueda.consulta || estado.paginas.length === 0) {
+    limpiarBusqueda();
+    return;
+  }
+
+  mostrarResultadoBusqueda('Buscando…');
+  const coincidencias = [];
+  let caracteresTotales = 0;
+  // La primera búsqueda tiene que leer el texto de todas las páginas;
+  // después queda guardado y las siguientes son instantáneas.
+  for (const info of estado.paginas) {
+    let textoPagina;
+    try {
+      textoPagina = await obtenerTextoPagina(info);
+    } catch {
+      continue;
+    }
+    if (version !== busqueda.version) return; // se escribió otra cosa mientras tanto
+    caracteresTotales += textoPagina.normalizado.normal.trim().length;
+    const pagina = Number(info.wrapper.dataset.numeroPagina);
+    for (const rango of buscarEnTexto(textoPagina.normalizado, busqueda.consulta)) {
+      coincidencias.push({ pagina, rango });
+    }
+  }
+
+  busqueda.coincidencias = coincidencias;
+  busqueda.porPagina = new Map();
+  coincidencias.forEach(({ pagina, rango }, indiceGlobal) => {
+    if (!busqueda.porPagina.has(pagina)) busqueda.porPagina.set(pagina, []);
+    busqueda.porPagina.get(pagina).push({ rango, indiceGlobal });
+  });
+
+  if (coincidencias.length === 0) {
+    busqueda.indiceActual = -1;
+    marcarTodas();
+    // Los PDFs escaneados son imágenes: no tienen texto para buscar ni copiar.
+    mostrarResultadoBusqueda(caracteresTotales === 0 ? 'Este PDF no tiene texto' : 'Sin resultados', true);
+    actualizarBotonesBusqueda();
+    return;
+  }
+
+  // Empezamos por la primera coincidencia desde la página que se está viendo.
+  const desdeAca = coincidencias.findIndex((c) => c.pagina >= estado.paginaActual);
+  busqueda.indiceActual = desdeAca === -1 ? 0 : desdeAca;
+  irACoincidenciaActual();
+}
+
+function limpiarBusqueda() {
+  busqueda.version++;
+  busqueda.consulta = '';
+  busqueda.coincidencias = [];
+  busqueda.porPagina = new Map();
+  busqueda.indiceActual = -1;
+  marcarTodas();
+  mostrarResultadoBusqueda('');
+  actualizarBotonesBusqueda();
+}
+
+function moverCoincidencia(paso) {
+  const total = busqueda.coincidencias.length;
+  if (total === 0) return;
+  busqueda.indiceActual = (busqueda.indiceActual + paso + total) % total;
+  irACoincidenciaActual();
+}
+
+function irACoincidenciaActual() {
+  const total = busqueda.coincidencias.length;
+  mostrarResultadoBusqueda(`${busqueda.indiceActual + 1} de ${total}`);
+  actualizarBotonesBusqueda();
+  marcarTodas();
+  irAMarca(busqueda.coincidencias[busqueda.indiceActual].pagina, '.coincidencia.actual');
+}
+
+// ---------- Marcas (búsqueda + resaltados) ----------
+
+function marcarTodas() {
+  for (const info of estado.paginas) marcarPagina(info);
+}
+
+// Pinta en la capa de texto de una página sus resaltados y sus coincidencias de
+// búsqueda. Si pueden superponerse, marcarEnCapa combina las clases.
+function marcarPagina(info) {
+  if (!info.capaTexto || !info.capaTexto.divs || !info.texto) return;
+  const pagina = Number(info.wrapper.dataset.numeroPagina);
+
+  const marcas = resaltador.marcasDePagina(pagina, info.texto);
+  for (const { rango, indiceGlobal } of busqueda.porPagina.get(pagina) || []) {
+    marcas.push({
+      inicio: rango[0],
+      fin: rango[1],
+      clases: indiceGlobal === busqueda.indiceActual ? ['coincidencia', 'actual'] : ['coincidencia']
+    });
+  }
+  marcarEnCapa(info.capaTexto.divs, info.texto.textosItems, info.texto.inicios, marcas);
+
+  if (desplazamientoPendiente && desplazamientoPendiente.pagina === pagina) {
+    const elemento = info.wrapper.querySelector(desplazamientoPendiente.selector);
+    desplazamientoPendiente = null;
+    if (elemento) desplazarHasta(elemento, pagina);
+  }
+}
+
+// Lleva la vista hasta una marca. Si esa página todavía no tiene capa de texto,
+// va a la página y marcarPagina() termina el trabajo cuando la capa está lista.
+function irAMarca(pagina, selector) {
+  const info = estado.paginas[pagina - 1];
+  if (!info) return;
+  const elemento = info.capaTexto && info.capaTexto.contenedor ? info.wrapper.querySelector(selector) : null;
+  if (elemento) {
+    desplazamientoPendiente = null;
+    desplazarHasta(elemento, pagina);
+  } else {
+    desplazamientoPendiente = { pagina, selector };
+    irAPagina(pagina);
+  }
+}
+
+function desplazarHasta(elemento, pagina) {
+  elemento.scrollIntoView({ block: 'center', inline: 'nearest' });
+  // Al centrar la marca puede quedar arriba el final de la página anterior;
+  // igual que en irAPagina, la página actual es a la que saltamos.
+  estado.scrollDelSalto = visor.scrollTop;
+  campoPagina.value = String(pagina);
+  establecerPaginaActual(pagina);
+}
+
+function mostrarResultadoBusqueda(texto, esError = false) {
+  resultadoBusqueda.textContent = texto;
+  resultadoBusqueda.classList.toggle('sin-resultados', esError);
+}
+
+function actualizarBotonesBusqueda() {
+  const hayCoincidencias = busqueda.coincidencias.length > 0;
+  botonAnterior.disabled = !hayCoincidencias;
+  botonSiguiente.disabled = !hayCoincidencias;
+}
+
+function configurarBusqueda() {
+  let temporizador = null;
+  campoBusqueda.addEventListener('input', () => {
+    clearTimeout(temporizador);
+    temporizador = setTimeout(() => buscar(campoBusqueda.value), 250);
+  });
+
+  campoBusqueda.addEventListener('keydown', (evento) => {
+    if (evento.key === 'Enter') {
+      evento.preventDefault();
+      // Si todavía no se buscó lo que está escrito (Enter antes de la pausa), buscamos ya.
+      if (normalizarConsulta(campoBusqueda.value) !== busqueda.consulta) {
+        clearTimeout(temporizador);
+        buscar(campoBusqueda.value);
+      } else {
+        moverCoincidencia(evento.shiftKey ? -1 : 1);
+      }
+    } else if (evento.key === 'Escape') {
+      clearTimeout(temporizador);
+      campoBusqueda.value = '';
+      limpiarBusqueda();
+      campoBusqueda.blur();
+    }
+  });
+
+  botonSiguiente.addEventListener('click', () => moverCoincidencia(1));
+  botonAnterior.addEventListener('click', () => moverCoincidencia(-1));
+
+  // Ctrl+F (Cmd+F en Mac) lleva al campo de búsqueda.
+  document.addEventListener('keydown', (evento) => {
+    if ((evento.ctrlKey || evento.metaKey) && evento.key.toLowerCase() === 'f') {
+      evento.preventDefault();
+      if (campoBusqueda.disabled) return;
+      campoBusqueda.focus();
+      campoBusqueda.select();
+    }
+  });
+
+}
+
+// ---------- Selección de texto ----------
+// Adaptado de TextLayerBuilder (pdfjs-dist/web/pdf_viewer.mjs). En Chromium, que
+// es lo que usa VS Code, la selección se anula si el mouse termina sobre
+// .endOfContent (que no es seleccionable). Por eso, mientras se selecciona,
+// lo movemos justo después del punto donde va terminando la selección.
+
+const capasSeleccionables = new Map(); // div .textLayer -> su div .endOfContent
+
+function registrarCapaSeleccionable(contenedor, finDeContenido) {
+  contenedor.addEventListener('mousedown', () => contenedor.classList.add('selecting'));
+  capasSeleccionables.set(contenedor, finDeContenido);
+}
+
+function devolverFinDeContenido(finDeContenido, contenedor) {
+  contenedor.append(finDeContenido);
+  finDeContenido.style.width = '';
+  finDeContenido.style.height = '';
+  contenedor.classList.remove('selecting');
+}
+
+function configurarSeleccion() {
+  const devolverTodos = () => capasSeleccionables.forEach(devolverFinDeContenido);
+  let punteroApretado = false;
+  document.addEventListener('pointerdown', () => {
+    punteroApretado = true;
+  });
+  document.addEventListener('pointerup', () => {
+    punteroApretado = false;
+    devolverTodos();
+  });
+  window.addEventListener('blur', () => {
+    punteroApretado = false;
+    devolverTodos();
+  });
+  document.addEventListener('keyup', () => {
+    if (!punteroApretado) devolverTodos();
+  });
+
+  let rangoAnterior = null;
+  document.addEventListener('selectionchange', () => {
+    const seleccion = document.getSelection();
+    if (seleccion.rangeCount === 0) {
+      devolverTodos();
+      return;
+    }
+    const rango = seleccion.getRangeAt(0);
+    for (const [contenedor, finDeContenido] of capasSeleccionables) {
+      if (rango.intersectsNode(contenedor)) contenedor.classList.add('selecting');
+      else devolverFinDeContenido(finDeContenido, contenedor);
+    }
+
+    // ¿Se está moviendo el principio o el final de la selección?
+    const cambiaElInicio =
+      rangoAnterior &&
+      (rango.compareBoundaryPoints(Range.END_TO_END, rangoAnterior) === 0 ||
+        rango.compareBoundaryPoints(Range.START_TO_END, rangoAnterior) === 0);
+    let ancla = cambiaElInicio ? rango.startContainer : rango.endContainer;
+    if (ancla.nodeType === Node.TEXT_NODE) ancla = ancla.parentNode;
+
+    const capa = ancla.parentElement && ancla.parentElement.closest('.textLayer');
+    const finDeContenido = capasSeleccionables.get(capa);
+    if (finDeContenido) {
+      finDeContenido.style.width = capa.style.width;
+      finDeContenido.style.height = capa.style.height;
+      ancla.parentElement.insertBefore(finDeContenido, cambiaElInicio ? ancla : ancla.nextSibling);
+    }
+    rangoAnterior = rango.cloneRange();
+  });
+}
+
 // ---------- Barra de herramientas ----------
 
 function habilitarBarra() {
@@ -453,6 +835,7 @@ function habilitarBarra() {
   campoPagina.disabled = false;
   campoPagina.max = String(estado.paginas.length);
   etiquetaTotalPaginas.textContent = `de ${estado.paginas.length}`;
+  campoBusqueda.disabled = false;
 }
 
 function configurarBarra() {

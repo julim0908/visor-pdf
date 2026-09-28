@@ -57,9 +57,15 @@ class GuardadoDeNotas {
 // Proveedor del "Custom Editor" que VS Code usa para abrir archivos .pdf.
 // Es de solo lectura (CustomReadonlyEditorProvider) porque no editamos el PDF en sí,
 // solo lo mostramos (los datos propios del práctico van aparte, en src/almacen.js).
+// Preferencias de lectura (color de papel, guía de lectura): son de la persona,
+// no de un PDF, así que valen para todos los prácticos y se guardan en VS Code.
+const CLAVE_PREFERENCIAS = 'preferenciasLectura';
+
 class ProveedorVisorPdf {
   constructor(contextoExtension) {
     this.contextoExtension = contextoExtension;
+    // Para avisarles a todos los visores abiertos cuando cambian las preferencias.
+    this.webviewsAbiertos = new Set();
   }
 
   static register(contextoExtension) {
@@ -101,10 +107,16 @@ class ProveedorVisorPdf {
 
     const webview = panelWebview.webview;
     const guardadoNotas = new GuardadoDeNotas(documento.uri, webview);
+    this.webviewsAbiertos.add(webview);
 
     const suscripcion = webview.onDidReceiveMessage(async (mensaje) => {
       if (!mensaje) return;
       if (mensaje.tipo === 'listo') {
+        // Primero las preferencias, así el PDF aparece directamente con el color elegido.
+        webview.postMessage({
+          tipo: 'preferencias',
+          preferencias: this.contextoExtension.globalState.get(CLAVE_PREFERENCIAS) || null
+        });
         await Promise.all([
           this.enviarPdfAlWebview(documento.uri, webview),
           this.enviarDatosPractico(documento.uri, webview)
@@ -115,13 +127,39 @@ class ProveedorVisorPdf {
         await this.cambiarEstado(documento.uri, mensaje.estado, webview);
       } else if (mensaje.tipo === 'editar-notas' && typeof mensaje.notas === 'string') {
         guardadoNotas.programar(mensaje.notas, mensaje.revision);
+      } else if (mensaje.tipo === 'guardar-resaltados') {
+        await this.guardarResaltados(documento.uri, mensaje.resaltados);
+      } else if (mensaje.tipo === 'guardar-preferencias') {
+        await this.guardarPreferencias(mensaje.preferencias, webview);
       }
     });
 
     panelWebview.onDidDispose(() => {
+      this.webviewsAbiertos.delete(webview);
       suscripcion.dispose();
       guardadoNotas.cerrar();
     });
+  }
+
+  async guardarResaltados(uriPdf, resaltados) {
+    try {
+      await almacen.actualizarPractico(uriPdf, { resaltados });
+    } catch (error) {
+      // En pantalla los resaltados quedan igual; se vuelven a guardar con el próximo cambio.
+      vscode.window.showErrorMessage(`No se pudieron guardar los resaltados: ${error.message}`);
+    }
+  }
+
+  async guardarPreferencias(preferencias, webviewOrigen) {
+    if (!preferencias || typeof preferencias !== 'object') return;
+    try {
+      await this.contextoExtension.globalState.update(CLAVE_PREFERENCIAS, preferencias);
+    } catch (error) {
+      console.error('No se pudieron guardar las preferencias de lectura', error);
+    }
+    for (const webview of this.webviewsAbiertos) {
+      if (webview !== webviewOrigen) webview.postMessage({ tipo: 'preferencias', preferencias });
+    }
   }
 
   // Si no se puede leer .practicos.json, avisamos y mandamos `null`: el visor
@@ -223,6 +261,33 @@ class ProveedorVisorPdf {
       uriPdfWorker: uriPdfWorker.toString()
     });
 
+    const opcionesPapel = [
+      ['blanco', 'Blanco'],
+      ['crema', 'Crema'],
+      ['durazno', 'Durazno'],
+      ['celeste', 'Celeste'],
+      ['verde', 'Verde'],
+      ['gris', 'Gris']
+    ]
+      .map(
+        ([valor, nombre]) =>
+          `<button class="opcion-papel" role="radio" aria-checked="false" data-papel="${valor}"><span class="muestra-papel papel-${valor}"></span>${nombre}</button>`
+      )
+      .join('');
+
+    // Cada color tiene además su propia forma de marca, para distinguirlos sin depender del color.
+    const botonesColor = [
+      ['amarillo', 'Amarillo (fondo)', '1'],
+      ['verde', 'Verde (subrayado)', '2'],
+      ['rosa', 'Rosa (doble subrayado)', '3'],
+      ['celeste', 'Celeste (subrayado punteado)', '4']
+    ]
+      .map(
+        ([color, nombre, tecla]) =>
+          `<button class="boton-color" data-color="${color}" title="${nombre} — tecla ${tecla}" aria-label="${nombre}"><span class="muestra-marca marca-${color}">Ab</span></button>`
+      )
+      .join('');
+
     return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -244,6 +309,12 @@ class ProveedorVisorPdf {
     <input id="campo-pagina" type="number" min="1" value="1" disabled>
     <span id="etiqueta-total-paginas">de –</span>
   </div>
+  <div class="grupo" id="grupo-busqueda" role="search">
+    <input id="campo-busqueda" type="search" placeholder="Buscar (Ctrl+F)" aria-label="Buscar en el PDF" disabled>
+    <span id="resultado-busqueda" aria-live="polite"></span>
+    <button id="boton-anterior" title="Anterior (Shift+Enter)" aria-label="Coincidencia anterior" disabled>↑</button>
+    <button id="boton-siguiente" title="Siguiente (Enter)" aria-label="Coincidencia siguiente" disabled>↓</button>
+  </div>
   <div class="grupo" id="grupo-estado" role="group" aria-label="Estado del práctico">
     <button class="boton-estado" data-estado="pendiente" aria-pressed="false" disabled>${iconosEstado('pendiente')}Pendiente</button>
     <button class="boton-estado" data-estado="en-progreso" aria-pressed="false" disabled>${iconosEstado('en-progreso')}En progreso</button>
@@ -252,11 +323,40 @@ class ProveedorVisorPdf {
   <div class="grupo">
     <button id="boton-notas" aria-pressed="false" aria-controls="panel-notas" title="Mostrar u ocultar las notas">Notas</button>
   </div>
+  <div class="grupo" id="grupo-lectura">
+    <button id="boton-lectura" aria-haspopup="dialog" aria-expanded="false" aria-controls="menu-lectura" title="Opciones de lectura">Aa</button>
+    <div id="menu-lectura" class="menu-flotante oculto" role="dialog" aria-label="Opciones de lectura">
+      <div class="menu-titulo" id="titulo-papel">Color de papel</div>
+      <div class="opciones-papel" role="radiogroup" aria-labelledby="titulo-papel">${opcionesPapel}</div>
+      <div class="menu-titulo">Guía de lectura</div>
+      <label class="opcion-menu"><input type="checkbox" id="casilla-guia"> Mostrar la franja</label>
+      <label class="opcion-menu">Alto
+        <select id="selector-alto-guia">
+          <option value="fina">Fino (1 renglón)</option>
+          <option value="media">Medio</option>
+          <option value="ancha">Ancho (2 renglones)</option>
+        </select>
+      </label>
+      <p class="menu-ayuda">La franja sigue al mouse. También podés bajar renglón por renglón con las flechas ↑ ↓.</p>
+    </div>
+  </div>
 </div>
 <div id="area-principal">
-  <div id="visor">
-    <div id="mensaje-error" class="oculto"></div>
-    <div id="paginas"></div>
+  <div id="zona-visor">
+    <div id="visor">
+      <div id="mensaje-error" class="oculto"></div>
+      <div id="paginas"></div>
+    </div>
+    <div id="guia-lectura" class="oculto" aria-hidden="true">
+      <div class="sombra-guia arriba"></div>
+      <div class="franja-guia"></div>
+      <div class="sombra-guia abajo"></div>
+    </div>
+    <div id="menu-resaltar" class="menu-flotante oculto" role="toolbar" aria-label="Resaltar el texto seleccionado">
+      ${botonesColor}
+      <button id="boton-a-notas" title="Copiar el texto a las notas, anclado a su página">A notas</button>
+      <button id="boton-quitar-resaltado" title="Quitar este resaltado (tecla Supr)">Quitar</button>
+    </div>
   </div>
   <aside id="panel-notas" class="oculto" aria-label="Notas del práctico">
     <div class="panel-encabezado">
@@ -268,6 +368,9 @@ class ProveedorVisorPdf {
     <div class="panel-titulo">Notas por página</div>
     <p id="ayuda-anclas">Las líneas con <code>[pág. N]</code> aparecen acá; hacé click para ir a esa página.</p>
     <ul id="lista-anclas"></ul>
+    <div class="panel-titulo">Resaltados</div>
+    <p id="ayuda-resaltados">Seleccioná texto del PDF y elegí un color para resaltarlo.</p>
+    <ul id="lista-resaltados"></ul>
   </aside>
 </div>
 <script id="config-datos" type="application/json">${configuracion}</script>

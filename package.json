@@ -2,7 +2,7 @@
   "name": "visor-de-practicos",
   "displayName": "Visor de Prácticos",
   "description": "Visor de PDF para estudiar: marcá prácticos como hechos y tomá notas al lado.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
