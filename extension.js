@@ -4,6 +4,7 @@ const vscode = require('vscode');
 const path = require('path');
 const almacen = require('./src/almacen');
 const { armarResumen } = require('./src/resumen');
+const { armarHtmlDelVisor } = require('./src/plantilla');
 const { registrarArbolPracticos } = require('./src/arbolPracticos');
 
 const DEMORA_GUARDADO_NOTAS_MS = 800;
@@ -262,8 +263,8 @@ class ProveedorVisorPdf {
     }
   }
 
-  // Arma el HTML del webview con una Content Security Policy estricta:
-  // nada de scripts inline, todo cargado desde media/ o desde pdfjs-dist.
+  // Calcula las direcciones de los archivos que usa el webview; el HTML (con su
+  // Content Security Policy estricta) está en src/plantilla.js.
   obtenerHtml(webview) {
     const uriViewerJs = webview.asWebviewUri(
       vscode.Uri.joinPath(this.contextoExtension.extensionUri, 'media', 'viewer.js')
@@ -293,10 +294,6 @@ class ProveedorVisorPdf {
       webview.asWebviewUri(
         vscode.Uri.joinPath(this.contextoExtension.extensionUri, 'media', 'iconos', archivo)
       );
-    // Dos versiones de cada ícono; viewer.css muestra la que corresponde al tema.
-    const iconosEstado = (estado) =>
-      `<img class="icono-estado para-oscuro" src="${uriIcono(`${estado}.png`)}" alt="">` +
-      `<img class="icono-estado para-claro" src="${uriIcono(`${estado}-claro.png`)}" alt="">`;
 
     // Estos datos los necesita viewer.js pero no podemos usar un <script> inline
     // por la CSP, así que van en un bloque JSON no ejecutable que viewer.js lee.
@@ -305,131 +302,13 @@ class ProveedorVisorPdf {
       uriPdfWorker: uriPdfWorker.toString()
     });
 
-    const opcionesPapel = [
-      ['blanco', 'Blanco'],
-      ['crema', 'Crema'],
-      ['durazno', 'Durazno'],
-      ['celeste', 'Celeste'],
-      ['verde', 'Verde'],
-      ['gris', 'Gris']
-    ]
-      .map(
-        ([valor, nombre]) =>
-          `<button class="opcion-papel" role="radio" aria-checked="false" data-papel="${valor}"><span class="muestra-papel papel-${valor}"></span>${nombre}</button>`
-      )
-      .join('');
-
-    // Cada color tiene además su propia forma de marca, para distinguirlos sin depender del color.
-    const botonesColor = [
-      ['amarillo', 'Amarillo (fondo)', '1'],
-      ['verde', 'Verde (subrayado)', '2'],
-      ['rosa', 'Rosa (doble subrayado)', '3'],
-      ['celeste', 'Celeste (subrayado punteado)', '4']
-    ]
-      .map(
-        ([color, nombre, tecla]) =>
-          `<button class="boton-color" data-color="${color}" title="${nombre} — tecla ${tecla}" aria-label="${nombre}"><span class="muestra-marca marca-${color}">Ab</span></button>`
-      )
-      .join('');
-
-    return `<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource}; style-src ${webview.cspSource}; script-src ${webview.cspSource}; font-src ${webview.cspSource}; connect-src ${webview.cspSource}; worker-src blob:;">
-<link rel="stylesheet" href="${uriViewerCss}">
-<title>Visor PDF</title>
-</head>
-<body>
-<div id="barra-herramientas">
-  <div class="grupo">
-    <button id="boton-indice" aria-pressed="false" aria-controls="panel-indice" title="Este PDF no tiene índice" disabled>Índice</button>
-  </div>
-  <div class="grupo">
-    <button id="boton-alejar" title="Alejar" aria-label="Alejar" disabled>−</button>
-    <span id="etiqueta-zoom">100%</span>
-    <button id="boton-acercar" title="Acercar" aria-label="Acercar" disabled>+</button>
-    <button id="boton-ajustar-ancho" title="Ajustar al ancho" disabled>Ajustar al ancho</button>
-  </div>
-  <div class="grupo">
-    <label for="campo-pagina">Página</label>
-    <input id="campo-pagina" type="number" min="1" value="1" disabled>
-    <span id="etiqueta-total-paginas">de –</span>
-  </div>
-  <div class="grupo" id="grupo-busqueda" role="search">
-    <input id="campo-busqueda" type="search" placeholder="Buscar (Ctrl+F)" aria-label="Buscar en el PDF" disabled>
-    <span id="resultado-busqueda" aria-live="polite"></span>
-    <button id="boton-anterior" title="Anterior (Shift+Enter)" aria-label="Coincidencia anterior" disabled>↑</button>
-    <button id="boton-siguiente" title="Siguiente (Enter)" aria-label="Coincidencia siguiente" disabled>↓</button>
-  </div>
-  <div class="grupo" id="grupo-estado" role="group" aria-label="Estado del práctico">
-    <button class="boton-estado" data-estado="pendiente" aria-pressed="false" disabled>${iconosEstado('pendiente')}Pendiente</button>
-    <button class="boton-estado" data-estado="en-progreso" aria-pressed="false" disabled>${iconosEstado('en-progreso')}En progreso</button>
-    <button class="boton-estado" data-estado="hecho" aria-pressed="false" disabled>${iconosEstado('hecho')}Hecho</button>
-  </div>
-  <div class="grupo">
-    <button id="boton-notas" aria-pressed="false" aria-controls="panel-notas" title="Mostrar u ocultar las notas">Notas</button>
-  </div>
-  <div class="grupo" id="grupo-lectura">
-    <button id="boton-lectura" aria-haspopup="dialog" aria-expanded="false" aria-controls="menu-lectura" title="Opciones de lectura">Aa</button>
-    <div id="menu-lectura" class="menu-flotante oculto" role="dialog" aria-label="Opciones de lectura">
-      <div class="menu-titulo" id="titulo-papel">Color de papel</div>
-      <div class="opciones-papel" role="radiogroup" aria-labelledby="titulo-papel">${opcionesPapel}</div>
-      <div class="menu-titulo">Guía de lectura</div>
-      <label class="opcion-menu"><input type="checkbox" id="casilla-guia"> Mostrar la franja</label>
-      <label class="opcion-menu">Alto
-        <select id="selector-alto-guia">
-          <option value="fina">Fino (1 renglón)</option>
-          <option value="media">Medio</option>
-          <option value="ancha">Ancho (2 renglones)</option>
-        </select>
-      </label>
-      <p class="menu-ayuda">La franja sigue al mouse. También podés bajar renglón por renglón con las flechas ↑ ↓.</p>
-    </div>
-  </div>
-</div>
-<div id="area-principal">
-  <aside id="panel-indice" class="oculto" aria-label="Índice del PDF">
-    <div class="panel-titulo">Índice</div>
-    <ul id="lista-indice" class="arbol-indice"></ul>
-  </aside>
-  <div id="zona-visor">
-    <div id="visor">
-      <div id="mensaje-error" class="oculto"></div>
-      <div id="paginas"></div>
-    </div>
-    <div id="guia-lectura" class="oculto" aria-hidden="true">
-      <div class="sombra-guia arriba"></div>
-      <div class="franja-guia"></div>
-      <div class="sombra-guia abajo"></div>
-    </div>
-    <div id="menu-resaltar" class="menu-flotante oculto" role="toolbar" aria-label="Resaltar el texto seleccionado">
-      ${botonesColor}
-      <button id="boton-a-notas" title="Copiar el texto a las notas, anclado a su página">A notas</button>
-      <button id="boton-quitar-resaltado" title="Quitar este resaltado (tecla Supr)">Quitar</button>
-    </div>
-    <button id="boton-volver" class="oculto" title="Volver a donde estabas (Alt+←)">← Volver</button>
-  </div>
-  <aside id="panel-notas" class="oculto" aria-label="Notas del práctico">
-    <div class="panel-encabezado">
-      <span class="panel-titulo">Notas</span>
-      <span id="estado-guardado" aria-live="polite"></span>
-    </div>
-    <textarea id="campo-notas" placeholder="Escribí tus notas acá…" disabled></textarea>
-    <button id="boton-anclar" title="Agrega [pág. N] a la línea donde está el cursor" disabled>Anclar a pág. 1</button>
-    <div class="panel-titulo">Notas por página</div>
-    <p id="ayuda-anclas">Las líneas con <code>[pág. N]</code> aparecen acá; hacé click para ir a esa página.</p>
-    <ul id="lista-anclas"></ul>
-    <div class="panel-titulo">Resaltados</div>
-    <p id="ayuda-resaltados">Seleccioná texto del PDF y elegí un color para resaltarlo.</p>
-    <ul id="lista-resaltados"></ul>
-    <button id="boton-exportar" title="Guarda un archivo Markdown con tus notas y resaltados, ordenados por página" disabled>Exportar resumen…</button>
-  </aside>
-</div>
-<script id="config-datos" type="application/json">${configuracion}</script>
-<script type="module" src="${uriViewerJs}"></script>
-</body>
-</html>`;
+    return armarHtmlDelVisor({
+      cspSource: webview.cspSource,
+      uriViewerCss,
+      uriViewerJs,
+      uriIcono,
+      configuracion
+    });
   }
 }
 

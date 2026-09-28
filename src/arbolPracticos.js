@@ -1,4 +1,4 @@
-// Vista "Prácticos" de la barra lateral: lista los PDFs de la carpeta abierta,
+// Vista "Documentos" de la barra lateral: lista los PDFs de la carpeta abierta,
 // agrupados por carpeta, con el estado de cada uno.
 const vscode = require('vscode');
 const path = require('path');
@@ -50,7 +50,7 @@ function crearItemPdf(uriPdf, practico, carpetaIconos) {
   if (!practico) {
     // No se pudo leer el .practicos.json de esa carpeta.
     item.iconPath = new vscode.ThemeIcon('question');
-    item.tooltip = `${nombre}\nNo se pudieron leer los datos de este práctico.`;
+    item.tooltip = `${nombre}\nNo se pudieron leer los datos de este documento.`;
     return item;
   }
 
@@ -99,7 +99,7 @@ class ProveedorArbolPracticos {
       return await this.construirGrupos();
     } catch (error) {
       this.busquedaPdfs = null;
-      vscode.window.showErrorMessage(`No se pudo armar la lista de prácticos: ${error.message}`);
+      vscode.window.showErrorMessage(`No se pudo armar la lista de PDFs: ${error.message}`);
       return [];
     }
   }

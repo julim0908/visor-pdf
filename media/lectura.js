@@ -1,8 +1,17 @@
-// Opciones de lectura del menú "Aa": color de papel y guía de lectura.
+// Opciones de lectura del menú "Aa": color de papel, guía de lectura y voz.
 // Son preferencias de la persona (no de un PDF): la extensión las guarda y las
 // aplica a todos los visores abiertos.
+import { hayVoz, listarVoces, alCambiarVoces, probarVoz } from './voz.js';
 
-const PREFERENCIAS_POR_DEFECTO = { papel: 'blanco', guia: false, altoGuia: 'media' };
+const PREFERENCIAS_POR_DEFECTO = {
+  papel: 'blanco',
+  guia: false,
+  altoGuia: 'media',
+  voz: '', // voiceURI de la voz elegida ('' = elegir una en español automáticamente)
+  velocidadVoz: 1,
+  consejoVisto: false
+};
+const VELOCIDADES = [0.75, 1, 1.25, 1.5];
 const PAPELES = ['blanco', 'crema', 'durazno', 'celeste', 'verde', 'gris'];
 // Alto de la franja con zoom 100%, en píxeles; se multiplica por el zoom
 // para que siempre abarque más o menos la misma cantidad de texto.
@@ -19,6 +28,11 @@ export function crearLectura({ visor, paginas, obtenerZoom, guardar }) {
   const casillaGuia = document.getElementById('casilla-guia');
   const selectorAlto = document.getElementById('selector-alto-guia');
   const guia = document.getElementById('guia-lectura');
+  const opcionesVoz = document.getElementById('opciones-voz');
+  const selectorVoz = document.getElementById('selector-voz');
+  const selectorVelocidad = document.getElementById('selector-velocidad');
+  const botonProbarVoz = document.getElementById('boton-probar-voz');
+  const avisoSinVoces = document.getElementById('sin-voces');
 
   let preferencias = { ...PREFERENCIAS_POR_DEFECTO };
   let posicionGuia = null; // píxeles desde el borde de arriba del visor
@@ -28,6 +42,10 @@ export function crearLectura({ visor, paginas, obtenerZoom, guardar }) {
     if (!PAPELES.includes(preferencias.papel)) preferencias.papel = 'blanco';
     if (!ALTOS_GUIA[preferencias.altoGuia]) preferencias.altoGuia = 'media';
     preferencias.guia = Boolean(preferencias.guia);
+    if (!VELOCIDADES.includes(Number(preferencias.velocidadVoz))) preferencias.velocidadVoz = 1;
+    preferencias.velocidadVoz = Number(preferencias.velocidadVoz);
+    selectorVelocidad.value = String(preferencias.velocidadVoz);
+    llenarVoces();
 
     // viewer.css tiñe las páginas según este atributo.
     paginas.dataset.papel = preferencias.papel;
@@ -47,6 +65,35 @@ export function crearLectura({ visor, paginas, obtenerZoom, guardar }) {
     aplicar({ ...preferencias, ...cambios });
     guardar(preferencias);
   }
+
+  // ---------- Voz ----------
+
+  // Las voces las da el sistema operativo y pueden llegar un rato después de abrir.
+  function llenarVoces() {
+    const voces = listarVoces();
+    const sinVoces = voces.length === 0;
+    opcionesVoz.classList.toggle('oculto', sinVoces);
+    avisoSinVoces.classList.toggle('oculto', !sinVoces || !hayVoz());
+    if (sinVoces) return;
+
+    const automatica = document.createElement('option');
+    automatica.value = '';
+    automatica.textContent = 'Automática (español)';
+    const opciones = voces.map((voz) => {
+      const opcion = document.createElement('option');
+      opcion.value = voz.voiceURI;
+      opcion.textContent = `${voz.name} (${voz.lang})`;
+      return opcion;
+    });
+    selectorVoz.replaceChildren(automatica, ...opciones);
+    selectorVoz.value = voces.some((v) => v.voiceURI === preferencias.voz) ? preferencias.voz : '';
+  }
+
+  alCambiarVoces(llenarVoces);
+  selectorVoz.addEventListener('change', () => cambiar({ voz: selectorVoz.value }));
+  selectorVelocidad.addEventListener('change', () => cambiar({ velocidadVoz: Number(selectorVelocidad.value) }));
+  botonProbarVoz.addEventListener('click', () => probarVoz(preferencias.voz, preferencias.velocidadVoz));
+  if (!hayVoz()) opcionesVoz.classList.add('oculto');
 
   // ---------- Guía de lectura ----------
 
@@ -142,6 +189,8 @@ export function crearLectura({ visor, paginas, obtenerZoom, guardar }) {
 
   return {
     aplicar,
+    cambiar,
+    obtener: () => preferencias,
     // El alto de la franja depende del zoom.
     alCambiarZoom: dibujarGuia
   };

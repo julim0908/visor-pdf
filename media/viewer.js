@@ -6,6 +6,8 @@ import { marcarEnCapa } from './marcas.js';
 import { crearLectura } from './lectura.js';
 import { crearResaltador } from './resaltador.js';
 import { resolverDestino, armarIndice, renderizarLinks } from './indice.js';
+import { crearLector, hayVoz } from './voz.js';
+import { crearMenuDesplegable } from './menus.js';
 
 const vscode = acquireVsCodeApi();
 
@@ -21,8 +23,17 @@ const botonAjustarAncho = document.getElementById('boton-ajustar-ancho');
 const etiquetaZoom = document.getElementById('etiqueta-zoom');
 const campoPagina = document.getElementById('campo-pagina');
 const etiquetaTotalPaginas = document.getElementById('etiqueta-total-paginas');
-const grupoEstado = document.getElementById('grupo-estado');
-const botonesEstado = [...document.querySelectorAll('.boton-estado')];
+const botonEstado = document.getElementById('boton-estado');
+const menuEstado = document.getElementById('menu-estado');
+const iconoEstadoActual = document.getElementById('icono-estado-actual');
+const textoEstadoActual = document.getElementById('texto-estado-actual');
+const botonesEstado = [...menuEstado.querySelectorAll('.boton-estado')];
+const botonPaginaAnterior = document.getElementById('boton-pagina-anterior');
+const botonPaginaSiguiente = document.getElementById('boton-pagina-siguiente');
+const botonLeer = document.getElementById('boton-leer');
+const botonDetenerLectura = document.getElementById('boton-detener-lectura');
+const consejo = document.getElementById('consejo');
+const botonCerrarConsejo = document.getElementById('boton-cerrar-consejo');
 const botonNotas = document.getElementById('boton-notas');
 const panelNotas = document.getElementById('panel-notas');
 const campoNotas = document.getElementById('campo-notas');
@@ -97,7 +108,45 @@ const resaltador = crearResaltador({
   remarcarTodas: marcarTodas,
   irAMarca,
   agregarLineaANotas,
-  enviar: (mensaje) => vscode.postMessage(mensaje)
+  enviar: (mensaje) => vscode.postMessage(mensaje),
+  leerTramos: (tramos) => leerEnVozAlta(tramos),
+  // Si ya resaltó algo, el consejo de cómo resaltar no hace más falta.
+  alResaltar: () => cerrarConsejo()
+});
+
+// ---------- Lectura en voz alta ----------
+
+// Qué se está leyendo, para marcarlo en la página: { pagina, inicio, fin } o null.
+const lecturaEnCurso = { frase: null, palabra: null };
+let tramosALeer = null; // null = desde la página actual hasta el final
+
+const lector = crearLector({
+  preferencias: () => ({
+    voz: lectura.obtener().voz,
+    velocidad: lectura.obtener().velocidadVoz
+  }),
+  // Lo que hay que leer: los tramos elegidos o, si no hay, todo desde la página actual.
+  obtenerTramos: async function* () {
+    if (tramosALeer) {
+      for (const tramo of tramosALeer) {
+        const info = estado.paginas[tramo.pagina - 1];
+        const { textoPlano } = await obtenerTextoPagina(info);
+        yield { pagina: tramo.pagina, texto: textoPlano, desde: tramo.inicio, hasta: tramo.fin };
+      }
+      return;
+    }
+    for (let pagina = estado.paginaActual; pagina <= estado.paginas.length; pagina++) {
+      const { textoPlano } = await obtenerTextoPagina(estado.paginas[pagina - 1]);
+      yield { pagina, texto: textoPlano, desde: 0, hasta: textoPlano.length };
+    }
+  },
+  alFragmento: (pagina, inicio, fin) => marcarLectura('frase', pagina, inicio, fin),
+  alPalabra: (pagina, inicio, fin) => marcarLectura('palabra', pagina, inicio, fin),
+  alCambiarEstado: mostrarEstadoLectura,
+  alError: (mensaje) => {
+    mostrarError(mensaje);
+    setTimeout(() => elementoError.classList.add('oculto'), 6000);
+  }
 });
 
 function mostrarError(mensaje) {
@@ -124,6 +173,7 @@ async function iniciar() {
         cargarPdf(pdfjsLib, mensaje.datos, mensaje.vista);
       } else if (mensaje.tipo === 'preferencias') {
         lectura.aplicar(mensaje.preferencias);
+        mostrarConsejoSiCorresponde();
       } else if (mensaje.tipo === 'datos-practico') {
         mostrarDatosPractico(mensaje.practico);
         if (mensaje.inicial) {
@@ -144,6 +194,7 @@ async function iniciar() {
     configurarBusqueda();
     configurarSeleccion();
     configurarIndice();
+    configurarVoz();
 
     // Avisamos a la extensión que ya podemos recibir el PDF.
     vscode.postMessage({ tipo: 'listo' });
@@ -185,6 +236,7 @@ async function cargarPdf(pdfjsLib, datosPdf, vistaGuardada) {
   habilitarBarra();
   aplicarZoom();
   irAPagina((vistaGuardada && vistaGuardada.pagina) || 1);
+  mostrarConsejoSiCorresponde();
 }
 
 // Crea un contenedor por página, sin dibujar todavía: eso lo hace el
@@ -449,6 +501,8 @@ function actualizarPaginaActualSegunScroll() {
 function establecerPaginaActual(numero) {
   estado.paginaActual = numero;
   botonAnclar.textContent = `Anclar a pág. ${numero}`;
+  botonPaginaAnterior.disabled = numero <= 1;
+  botonPaginaSiguiente.disabled = numero >= estado.paginas.length;
   guardarVista();
 }
 
@@ -469,16 +523,21 @@ function guardarVista() {
 
 // ---------- Estado del práctico ----------
 
-// `practico` es null cuando la extensión no pudo leer los datos: en ese caso
-// deshabilitamos los botones para no intentar guardar sobre un archivo con errores.
+// El estado se elige en un menú desplegable; el botón muestra el ícono y el nombre
+// del estado actual. `practico` es null cuando la extensión no pudo leer los datos:
+// en ese caso deshabilitamos el botón para no intentar guardar sobre un archivo con errores.
 function mostrarDatosPractico(practico) {
+  const actual = practico ? practico.estado : null;
   for (const boton of botonesEstado) {
-    const activo = Boolean(practico) && boton.dataset.estado === practico.estado;
-    boton.disabled = !practico;
-    boton.classList.toggle('activo', activo);
-    boton.setAttribute('aria-pressed', String(activo));
+    boton.setAttribute('aria-checked', String(boton.dataset.estado === actual));
   }
-  grupoEstado.title = practico ? '' : 'No se pudieron leer los datos de este práctico';
+  const elegido = botonesEstado.find((b) => b.dataset.estado === actual) || botonesEstado[0];
+  iconoEstadoActual.replaceChildren(...[...elegido.querySelectorAll('img')].map((img) => img.cloneNode()));
+  textoEstadoActual.textContent = practico ? elegido.querySelector('.nombre-estado').textContent : 'Sin datos';
+  botonEstado.disabled = !practico;
+  botonEstado.title = practico
+    ? `Estado del documento: ${textoEstadoActual.textContent}`
+    : 'No se pudieron leer los datos de este documento';
 }
 
 function cambiarEstadoPractico(estadoNuevo) {
@@ -512,7 +571,7 @@ function cargarNotas(practico) {
   campoNotas.value = practico ? practico.notas || '' : '';
   campoNotas.placeholder = practico
     ? 'Escribí tus notas acá…'
-    : 'No se pudieron leer los datos de este práctico.';
+    : 'No se pudieron leer los datos de este documento.';
   mostrarEstadoGuardado('');
   actualizarListaAnclas();
 }
@@ -705,6 +764,12 @@ function marcarPagina(info) {
       fin: rango[1],
       clases: indiceGlobal === busqueda.indiceActual ? ['coincidencia', 'actual'] : ['coincidencia']
     });
+  }
+  // Lectura en voz alta: la frase que se está leyendo y, más marcada, la palabra.
+  const { frase, palabra } = lecturaEnCurso;
+  if (frase && frase.pagina === pagina) marcas.push({ inicio: frase.inicio, fin: frase.fin, clases: ['leyendo-frase'] });
+  if (palabra && palabra.pagina === pagina) {
+    marcas.push({ inicio: palabra.inicio, fin: palabra.fin, clases: ['leyendo-palabra'] });
   }
   marcarEnCapa(info.capaTexto.divs, info.texto.textosItems, info.texto.inicios, marcas);
 
@@ -960,6 +1025,79 @@ function configurarIndice() {
   botonExportar.addEventListener('click', () => vscode.postMessage({ tipo: 'exportar-resumen' }));
 }
 
+// ---------- Lectura en voz alta (interfaz) ----------
+
+// `tramos`: lo que hay que leer ({ pagina, inicio, fin }), o nada para leer
+// desde la página actual hasta el final.
+function leerEnVozAlta(tramos) {
+  tramosALeer = tramos && tramos.length > 0 ? tramos : null;
+  lector.leer();
+}
+
+function marcarLectura(tipo, pagina, inicio, fin) {
+  const anterior = lecturaEnCurso[tipo];
+  lecturaEnCurso[tipo] = pagina ? { pagina, inicio, fin } : null;
+  for (const numero of new Set([anterior && anterior.pagina, pagina])) {
+    if (numero && estado.paginas[numero - 1]) marcarPagina(estado.paginas[numero - 1]);
+  }
+  if (tipo === 'palabra' && pagina) mantenerALaVista(pagina);
+}
+
+// Mueve la página para que la palabra que se está leyendo no quede fuera de la pantalla.
+function mantenerALaVista(pagina) {
+  const info = estado.paginas[pagina - 1];
+  const elemento = info.wrapper.querySelector('.leyendo-palabra');
+  if (!elemento) {
+    // La página todavía no tiene capa de texto: la traemos a la vista para que se arme.
+    const { top, bottom } = info.wrapper.getBoundingClientRect();
+    const zona = visor.getBoundingClientRect();
+    if (bottom < zona.top || top > zona.bottom) irAPagina(pagina);
+    return;
+  }
+  const palabra = elemento.getBoundingClientRect();
+  const zona = visor.getBoundingClientRect();
+  if (palabra.top < zona.top + 40 || palabra.bottom > zona.bottom - 40) {
+    elemento.scrollIntoView({ block: 'center', inline: 'nearest' });
+  }
+}
+
+function mostrarEstadoLectura(estadoLector) {
+  botonLeer.dataset.estado = estadoLector;
+  botonLeer.classList.toggle('activo', estadoLector !== 'detenido');
+  const textos = {
+    detenido: ['Leer', 'Leer en voz alta (si hay texto seleccionado, lee solo eso)'],
+    leyendo: ['Pausar', 'Pausar la lectura'],
+    pausado: ['Seguir', 'Seguir leyendo']
+  }[estadoLector];
+  botonLeer.querySelector('.etiqueta').textContent = textos[0];
+  botonLeer.title = textos[1];
+  botonDetenerLectura.classList.toggle('oculto', estadoLector === 'detenido');
+}
+
+function configurarVoz() {
+  botonLeer.addEventListener('click', () => {
+    if (lector.estado() !== 'detenido') {
+      lector.pausarOSeguir();
+      return;
+    }
+    const tramos = resaltador.tramosDeSeleccion();
+    if (tramos.length > 0) document.getSelection().removeAllRanges();
+    leerEnVozAlta(tramos);
+  });
+  botonDetenerLectura.addEventListener('click', () => lector.detener());
+}
+
+// ---------- Consejo para quien abre el visor por primera vez ----------
+
+function mostrarConsejoSiCorresponde() {
+  consejo.classList.toggle('oculto', Boolean(lectura.obtener().consejoVisto) || estado.paginas.length === 0);
+}
+
+function cerrarConsejo() {
+  consejo.classList.add('oculto');
+  if (!lectura.obtener().consejoVisto) lectura.cambiar({ consejoVisto: true });
+}
+
 // ---------- Barra de herramientas ----------
 
 function habilitarBarra() {
@@ -968,7 +1106,12 @@ function habilitarBarra() {
   campoPagina.max = String(estado.paginas.length);
   etiquetaTotalPaginas.textContent = `de ${estado.paginas.length}`;
   campoBusqueda.disabled = false;
+  botonLeer.disabled = !hayVoz();
+  if (!hayVoz()) botonLeer.title = 'Esta versión de VS Code no permite leer en voz alta';
 }
+
+const esCampoEditable = (elemento) =>
+  elemento instanceof HTMLElement && (elemento.matches('input, textarea, select') || elemento.isContentEditable);
 
 function configurarBarra() {
   botonAcercar.addEventListener('click', () => cambiarZoom(siguientePasoZoom(+1), 'manual'));
@@ -977,11 +1120,24 @@ function configurarBarra() {
     cambiarZoom(calcularZoomAjustadoAlAncho(), 'ancho')
   );
 
+  crearMenuDesplegable(botonEstado, menuEstado);
   for (const boton of botonesEstado) {
     boton.addEventListener('click', () => {
-      if (!boton.classList.contains('activo')) cambiarEstadoPractico(boton.dataset.estado);
+      if (boton.getAttribute('aria-checked') !== 'true') cambiarEstadoPractico(boton.dataset.estado);
     });
   }
+
+  botonPaginaAnterior.addEventListener('click', () => irAPagina(estado.paginaActual - 1));
+  botonPaginaSiguiente.addEventListener('click', () => irAPagina(estado.paginaActual + 1));
+  // RePág / AvPág cambian de página (salvo mientras se escribe en un campo).
+  document.addEventListener('keydown', (evento) => {
+    if (evento.key !== 'PageDown' && evento.key !== 'PageUp') return;
+    if (esCampoEditable(evento.target) || estado.paginas.length === 0) return;
+    evento.preventDefault();
+    irAPagina(estado.paginaActual + (evento.key === 'PageDown' ? 1 : -1));
+  });
+
+  botonCerrarConsejo.addEventListener('click', cerrarConsejo);
 
   campoPagina.addEventListener('keydown', (evento) => {
     if (evento.key === 'Enter') {

@@ -1,8 +1,8 @@
 {
   "name": "visor-de-practicos",
   "displayName": "Visor PDF",
-  "description": "Visor de PDF para estudiar: marcá prácticos como hechos y tomá notas al lado.",
-  "version": "0.3.1",
+  "description": "Visor de PDF para VS Code: leé, buscá, resaltá, escuchá en voz alta y tomá notas en cualquier PDF.",
+  "version": "0.4.0",
   "publisher": "JulietaMontenegro",
   "license": "MIT",
   "icon": "media/icono-extension.png",
@@ -16,9 +16,10 @@
   "keywords": [
     "pdf",
     "visor",
-    "facultad",
-    "estudio",
-    "notas"
+    "lector",
+    "resaltar",
+    "notas",
+    "accesibilidad"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -31,11 +32,16 @@
   ],
   "main": "./extension.js",
   "contributes": {
+    "configurationDefaults": {
+      "files.exclude": {
+        "**/.practicos.json": true
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {
           "id": "visorPracticos",
-          "title": "Prácticos",
+          "title": "Visor PDF",
           "icon": "media/icono-practicos.svg"
         }
       ]
@@ -44,14 +50,14 @@
       "visorPracticos": [
         {
           "id": "visorPracticos.lista",
-          "name": "Prácticos"
+          "name": "Documentos"
         }
       ]
     },
     "viewsWelcome": [
       {
         "view": "visorPracticos.lista",
-        "contents": "Abrí una carpeta con tus prácticos en PDF para verlos acá.\n[Abrir carpeta](command:vscode.openFolder)",
+        "contents": "Abrí una carpeta con PDFs para verlos acá.\n[Abrir carpeta](command:vscode.openFolder)",
         "when": "workbenchState == empty"
       },
       {

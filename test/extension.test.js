@@ -43,6 +43,11 @@ async function abrirVisor() {
   return { enviar: (mensaje) => manejador(mensaje), recibidos, panel };
 }
 
+test('oculta .practicos.json en el explorador de VS Code', () => {
+  const paquete = require('../package.json');
+  assert.equal(paquete.contributes.configurationDefaults['files.exclude']['**/.practicos.json'], true);
+});
+
 test('el HTML del visor tiene una Content Security Policy estricta', async () => {
   const { panel } = await abrirVisor();
   assert.match(panel.webview.html, /default-src 'none'/);

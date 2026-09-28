@@ -2,6 +2,7 @@
 // listarlo en el panel. Los resaltados se guardan en .practicos.json (lo hace la
 // extensión: acá solo se le manda la lista completa cada vez que cambia).
 import { posicionEnTexto } from './marcas.js';
+import { crearMenuDesplegable } from './menus.js';
 
 const NOMBRES_COLOR = { amarillo: 'Amarillo', verde: 'Verde', rosa: 'Rosa', celeste: 'Celeste' };
 const COLOR_POR_TECLA = { 1: 'amarillo', 2: 'verde', 3: 'rosa', 4: 'celeste' };
@@ -21,6 +22,21 @@ export function crearResaltador(visorApi) {
   const botonQuitar = document.getElementById('boton-quitar-resaltado');
   const lista = document.getElementById('lista-resaltados');
   const ayuda = document.getElementById('ayuda-resaltados');
+  const botonLeerSeleccion = document.getElementById('boton-leer-seleccion');
+  // Botón "Resaltar" de la barra, su menú de colores y el aviso del modo resaltador.
+  const botonResaltador = document.getElementById('boton-resaltador');
+  const botonColorResaltador = document.getElementById('boton-color-resaltador');
+  const menuColor = document.getElementById('menu-color-resaltador');
+  const opcionesColor = [...menuColor.querySelectorAll('.opcion-color')];
+  const muestraColorActual = document.getElementById('color-resaltador-actual');
+  const avisoModo = document.getElementById('aviso-modo');
+  const nombreColorModo = document.getElementById('nombre-color-modo');
+  const botonSalirModo = document.getElementById('boton-salir-modo');
+  crearMenuDesplegable(botonColorResaltador, menuColor);
+
+  let colorActual = 'amarillo';
+  // Con el modo resaltador activo, todo lo que se selecciona se resalta directo (sin menú).
+  let modoResaltador = false;
 
   // Como se guardan en .practicos.json; en memoria además llevan `perdido`
   // (true si su texto ya no aparece en la página).
@@ -33,6 +49,9 @@ export function crearResaltador(visorApi) {
   function cargar(guardados, puedeGuardar) {
     resaltados = (guardados || []).map((r) => ({ ...r }));
     habilitado = puedeGuardar;
+    botonResaltador.disabled = !puedeGuardar;
+    botonColorResaltador.disabled = !puedeGuardar;
+    if (!puedeGuardar) activarModoResaltador(false);
     ordenar();
     actualizarLista();
     visorApi.remarcarTodas();
@@ -136,15 +155,24 @@ export function crearResaltador(visorApi) {
 
   // ---------- Acciones ----------
 
+  function crearResaltados(tramos, color) {
+    for (const t of tramos) {
+      // Un resaltado nuevo reemplaza a los que quedan completamente adentro suyo.
+      resaltados = resaltados.filter((r) => !(r.pagina === t.pagina && r.inicio >= t.inicio && r.fin <= t.fin));
+      resaltados.push({ id: nuevoId(), ...t, color, creado: new Date().toISOString() });
+    }
+    document.getSelection().removeAllRanges();
+    cambiaron();
+    if (visorApi.alResaltar) visorApi.alResaltar();
+  }
+
   function aplicarColor(color) {
     if (!modo) return;
     if (modo.tipo === 'crear') {
-      for (const t of modo.tramos) {
-        // Un resaltado nuevo reemplaza a los que quedan completamente adentro suyo.
-        resaltados = resaltados.filter((r) => !(r.pagina === t.pagina && r.inicio >= t.inicio && r.fin <= t.fin));
-        resaltados.push({ id: nuevoId(), ...t, color, creado: new Date().toISOString() });
-      }
-      document.getSelection().removeAllRanges();
+      const { tramos } = modo;
+      ocultarMenu();
+      crearResaltados(tramos, color);
+      return;
     } else {
       const resaltado = resaltados.find((r) => r.id === modo.id);
       if (resaltado) resaltado.color = color;
@@ -167,6 +195,40 @@ export function crearResaltador(visorApi) {
     for (const t of tramos) visorApi.agregarLineaANotas(`[pág. ${t.pagina}] «${t.texto.replace(/\s+/g, ' ')}»`);
     if (modo.tipo === 'crear') document.getSelection().removeAllRanges();
     ocultarMenu();
+  }
+
+  // ---------- Botón "Resaltar" y modo resaltador ----------
+
+  function elegirColor(color) {
+    colorActual = color;
+    muestraColorActual.className = `muestra-color color-${color}`;
+    for (const opcion of opcionesColor) {
+      opcion.setAttribute('aria-checked', String(opcion.dataset.color === color));
+    }
+    nombreColorModo.textContent = NOMBRES_COLOR[color].toLowerCase();
+  }
+
+  function activarModoResaltador(activo) {
+    modoResaltador = activo;
+    botonResaltador.setAttribute('aria-pressed', String(activo));
+    botonResaltador.classList.toggle('activo', activo);
+    avisoModo.classList.toggle('oculto', !activo);
+    document.body.classList.toggle('modo-resaltador', activo);
+  }
+
+  // Con texto seleccionado lo resalta; si no, prende o apaga el modo resaltador.
+  function usarResaltador() {
+    const tramos = tramosDeSeleccion();
+    if (tramos.length > 0) crearResaltados(tramos, colorActual);
+    else activarModoResaltador(!modoResaltador);
+  }
+
+  function leerModoActual() {
+    if (!modo) return;
+    const tramos = modo.tipo === 'crear' ? modo.tramos : resaltados.filter((r) => r.id === modo.id);
+    ocultarMenu();
+    document.getSelection().removeAllRanges();
+    visorApi.leerTramos(tramos);
   }
 
   function ordenar() {
@@ -240,11 +302,16 @@ export function crearResaltador(visorApi) {
   });
 
   document.addEventListener('pointerup', (evento) => {
-    if (!habilitado || menu.contains(evento.target)) return;
+    // Soltar el mouse sobre la barra o un menú no es terminar una selección.
+    if (!habilitado || evento.target.closest('#barra-herramientas, .menu-flotante, .franja-aviso')) return;
     // Esperamos a que el navegador termine de actualizar la selección.
     setTimeout(() => {
       const tramos = tramosDeSeleccion();
       if (tramos.length === 0) return;
+      if (modoResaltador) {
+        crearResaltados(tramos, colorActual);
+        return;
+      }
       const rects = document.getSelection().getRangeAt(0).getClientRects();
       if (rects.length > 0) mostrarMenu({ tipo: 'crear', tramos }, rects[rects.length - 1]);
     }, 0);
@@ -260,7 +327,19 @@ export function crearResaltador(visorApi) {
 
   visor.addEventListener('scroll', ocultarMenu);
 
-  // Con el menú abierto: 1-4 eligen color, Supr quita, Esc cierra.
+  // En modo resaltador (sin el menú flotante abierto): 1-4 cambian el color y Esc sale.
+  document.addEventListener('keydown', (evento) => {
+    if (modo || !modoResaltador || esCampoEditable(evento.target) || evento.ctrlKey || evento.metaKey || evento.altKey) return;
+    if (menuColor.contains(evento.target)) return;
+    if (COLOR_POR_TECLA[evento.key]) {
+      evento.preventDefault();
+      elegirColor(COLOR_POR_TECLA[evento.key]);
+    } else if (evento.key === 'Escape') {
+      activarModoResaltador(false);
+    }
+  });
+
+  // Con el menú flotante abierto: 1-4 eligen color, Supr quita, Esc cierra.
   document.addEventListener('keydown', (evento) => {
     if (!modo || esCampoEditable(evento.target) || evento.ctrlKey || evento.metaKey || evento.altKey) return;
     if (COLOR_POR_TECLA[evento.key]) {
@@ -279,6 +358,20 @@ export function crearResaltador(visorApi) {
   for (const boton of botonesColor) boton.addEventListener('click', () => aplicarColor(boton.dataset.color));
   botonANotas.addEventListener('click', pasarANotas);
   botonQuitar.addEventListener('click', quitar);
+  botonLeerSeleccion.addEventListener('click', leerModoActual);
 
-  return { cargar, marcasDePagina };
+  botonResaltador.addEventListener('click', usarResaltador);
+  botonSalirModo.addEventListener('click', () => activarModoResaltador(false));
+  for (const opcion of opcionesColor) {
+    opcion.addEventListener('click', () => {
+      elegirColor(opcion.dataset.color);
+      // Elegir un color con texto seleccionado lo resalta; si no, deja el modo listo para usar.
+      const tramos = tramosDeSeleccion();
+      if (tramos.length > 0) crearResaltados(tramos, colorActual);
+      else activarModoResaltador(true);
+    });
+  }
+  elegirColor(colorActual);
+
+  return { cargar, marcasDePagina, tramosDeSeleccion };
 }
