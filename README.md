@@ -44,6 +44,11 @@ lado del PDF.
 
 ## Instalación
 
+En VS Code, abrí la vista de extensiones (`Ctrl+Shift+X`), buscá
+**Visor de Prácticos** e instalala.
+
+### Desde un archivo .vsix
+
 1. Descargá el archivo `visor-de-practicos-<versión>.vsix`.
 2. En VS Code, abrí la vista de extensiones (`Ctrl+Shift+X`).
 3. En el menú `…` de arriba, elegí **Install from VSIX…** y seleccioná el archivo.
