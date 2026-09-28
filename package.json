@@ -1,0 +1,101 @@
+{
+  "name": "visor-de-practicos",
+  "displayName": "Visor de Prácticos",
+  "description": "Visor de PDF para estudiar: marcá prácticos como hechos y tomá notas al lado.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Education",
+    "Visualization"
+  ],
+  "keywords": [
+    "pdf",
+    "visor",
+    "facultad",
+    "estudio",
+    "notas"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "activationEvents": [
+    "onCustomEditor:visorPracticos.pdfViewer",
+    "onView:visorPracticos.lista"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "visorPracticos",
+          "title": "Prácticos",
+          "icon": "media/icono-practicos.svg"
+        }
+      ]
+    },
+    "views": {
+      "visorPracticos": [
+        {
+          "id": "visorPracticos.lista",
+          "name": "Prácticos"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "visorPracticos.lista",
+        "contents": "Abrí una carpeta con tus prácticos en PDF para verlos acá.\n[Abrir carpeta](command:vscode.openFolder)",
+        "when": "workbenchState == empty"
+      },
+      {
+        "view": "visorPracticos.lista",
+        "contents": "No hay archivos PDF en la carpeta abierta.",
+        "when": "workbenchState != empty"
+      }
+    ],
+    "commands": [
+      {
+        "command": "visorPracticos.refrescar",
+        "title": "Actualizar lista",
+        "category": "Visor de Prácticos",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "visorPracticos.refrescar",
+          "when": "view == visorPracticos.lista",
+          "group": "navigation"
+        }
+      ]
+    },
+    "customEditors": [
+      {
+        "viewType": "visorPracticos.pdfViewer",
+        "displayName": "Visor de Prácticos",
+        "selector": [
+          {
+            "filenamePattern": "*.pdf"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
+  },
+  "scripts": {
+    "empaquetar": "vsce package --allow-missing-repository"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.0.0"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^4.0.0"
+  }
+}

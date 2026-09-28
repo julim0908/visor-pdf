@@ -1,0 +1,149 @@
+// Único lugar que sabe DÓNDE y CÓMO se guardan los datos de cada práctico.
+// Hoy: un archivo .practicos.json en la misma carpeta que el PDF, con una entrada
+// por nombre de archivo. Si mañana se guarda en otro lado (o se sincroniza con
+// Moodle), solo cambia este módulo: el resto usa leerPractico/actualizarPractico.
+const vscode = require('vscode');
+const path = require('path');
+
+const NOMBRE_ARCHIVO = '.practicos.json';
+const VERSION_FORMATO = 1;
+const ESTADOS = ['pendiente', 'en-progreso', 'hecho'];
+const PRACTICO_POR_DEFECTO = { estado: 'pendiente', notas: '' };
+
+// Errores "esperables" (archivo corrupto, sin permisos, etc.) con un mensaje
+// pensado para mostrarle al usuario tal cual.
+class ErrorAlmacen extends Error {}
+
+function carpetaDe(uriPdf) {
+  return uriPdf.with({ path: path.posix.dirname(uriPdf.path) });
+}
+
+function uriDelJsonDeCarpeta(uriCarpeta) {
+  return uriCarpeta.with({ path: path.posix.join(uriCarpeta.path, NOMBRE_ARCHIVO) });
+}
+
+function uriDelJson(uriPdf) {
+  return uriDelJsonDeCarpeta(carpetaDe(uriPdf));
+}
+
+function claveDelPdf(uriPdf) {
+  return path.posix.basename(uriPdf.path);
+}
+
+// Avisa cada vez que se guardan datos de un práctico (por ej. para refrescar la vista lateral).
+const emisorCambios = new vscode.EventEmitter();
+
+// Las operaciones sobre un mismo .practicos.json se hacen de a una, en orden.
+// Si no, dos guardados seguidos (o dos PDFs de la misma carpeta abiertos) podrían
+// leer el archivo al mismo tiempo y el segundo pisaría lo que escribió el primero.
+const colas = new Map();
+
+function enCola(clave, operacion) {
+  const anterior = colas.get(clave) || Promise.resolve();
+  const actual = anterior.catch(() => {}).then(operacion);
+  colas.set(clave, actual);
+  const limpiar = () => {
+    if (colas.get(clave) === actual) colas.delete(clave);
+  };
+  actual.then(limpiar, limpiar);
+  return actual;
+}
+
+async function leerJson(uriJson) {
+  let bytes;
+  try {
+    bytes = await vscode.workspace.fs.readFile(uriJson);
+  } catch (error) {
+    // Que todavía no exista es normal: se crea al guardar el primer dato.
+    if (error.code === 'FileNotFound') return { version: VERSION_FORMATO, practicos: {} };
+    throw new ErrorAlmacen(`No se pudo leer ${NOMBRE_ARCHIVO}: ${error.message}`);
+  }
+
+  const texto = new TextDecoder().decode(bytes);
+  if (texto.trim() === '') return { version: VERSION_FORMATO, practicos: {} };
+
+  let datos;
+  try {
+    datos = JSON.parse(texto);
+  } catch (error) {
+    throw new ErrorAlmacen(
+      `${NOMBRE_ARCHIVO} tiene un error de formato (${error.message}). ` +
+        'No se va a modificar hasta que lo corrijas.'
+    );
+  }
+
+  if (!datos || typeof datos !== 'object' || Array.isArray(datos)) {
+    throw new ErrorAlmacen(`${NOMBRE_ARCHIVO} no tiene el formato esperado.`);
+  }
+  if (datos.practicos === undefined) datos.practicos = {};
+  if (!datos.practicos || typeof datos.practicos !== 'object' || Array.isArray(datos.practicos)) {
+    throw new ErrorAlmacen(`${NOMBRE_ARCHIVO}: "practicos" no tiene el formato esperado.`);
+  }
+  return datos;
+}
+
+async function escribirJson(uriJson, datos) {
+  // Indentado y con salto de línea final, para que los diffs de git sean legibles.
+  const texto = `${JSON.stringify(datos, null, 2)}\n`;
+  try {
+    await vscode.workspace.fs.writeFile(uriJson, new TextEncoder().encode(texto));
+  } catch (error) {
+    throw new ErrorAlmacen(`No se pudo guardar ${NOMBRE_ARCHIVO}: ${error.message}`);
+  }
+}
+
+// Devuelve los datos guardados de un práctico (o los valores por defecto si no hay nada).
+function leerPractico(uriPdf) {
+  const uriJson = uriDelJson(uriPdf);
+  return enCola(uriJson.toString(), async () => {
+    const datos = await leerJson(uriJson);
+    return { ...PRACTICO_POR_DEFECTO, ...datos.practicos[claveDelPdf(uriPdf)] };
+  });
+}
+
+// Mezcla `cambios` con lo que ya había guardado y lo escribe. Devuelve el resultado.
+function actualizarPractico(uriPdf, cambios) {
+  if (cambios.estado !== undefined && !ESTADOS.includes(cambios.estado)) {
+    return Promise.reject(new ErrorAlmacen(`Estado inválido: "${cambios.estado}".`));
+  }
+  if (cambios.notas !== undefined && typeof cambios.notas !== 'string') {
+    return Promise.reject(new ErrorAlmacen('Las notas tienen que ser texto.'));
+  }
+
+  const uriJson = uriDelJson(uriPdf);
+  return enCola(uriJson.toString(), async () => {
+    const datos = await leerJson(uriJson);
+    const clave = claveDelPdf(uriPdf);
+    const practico = {
+      ...PRACTICO_POR_DEFECTO,
+      ...datos.practicos[clave],
+      ...cambios,
+      actualizado: new Date().toISOString()
+    };
+    datos.practicos[clave] = practico;
+    if (datos.version === undefined) datos.version = VERSION_FORMATO;
+    await escribirJson(uriJson, datos);
+    emisorCambios.fire({ uriPdf, practico });
+    return practico;
+  });
+}
+
+// Lee de una sola vez los datos de varios PDFs de una misma carpeta.
+// Devuelve un Map nombreDeArchivo -> práctico (con valores por defecto si no hay datos).
+function leerPracticosDeCarpeta(uriCarpeta, nombresPdf) {
+  const uriJson = uriDelJsonDeCarpeta(uriCarpeta);
+  return enCola(uriJson.toString(), async () => {
+    const datos = await leerJson(uriJson);
+    return new Map(nombresPdf.map((nombre) => [nombre, { ...PRACTICO_POR_DEFECTO, ...datos.practicos[nombre] }]));
+  });
+}
+
+module.exports = {
+  ESTADOS,
+  NOMBRE_ARCHIVO,
+  ErrorAlmacen,
+  alCambiar: emisorCambios.event,
+  leerPractico,
+  leerPracticosDeCarpeta,
+  actualizarPractico
+};

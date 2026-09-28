@@ -1,0 +1,304 @@
+/* Estilos del webview. Usamos las variables de VS Code para que el visor
+   respete el tema activo (claro, oscuro, alto contraste, etc). */
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+/* ---------- Barra de herramientas ---------- */
+
+#barra-herramientas {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 24px;
+  padding: 4px 12px;
+  background: var(--vscode-editorWidget-background);
+  border-bottom: 1px solid var(--vscode-panel-border, transparent);
+}
+
+.grupo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+button {
+  min-width: 28px;
+  padding: 3px 10px;
+  border: none;
+  border-radius: 2px;
+  font: inherit;
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+button.activo {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button:focus-visible,
+#campo-pagina:focus,
+#campo-notas:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+/* Puntito en el botón "Notas" cuando el práctico tiene notas escritas. */
+#boton-notas.tiene-notas::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  vertical-align: middle;
+  background: currentColor;
+}
+
+#etiqueta-zoom {
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+#campo-pagina {
+  width: 52px;
+  padding: 2px 4px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  font: inherit;
+  text-align: right;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+}
+
+#etiqueta-total-paginas {
+  color: var(--vscode-descriptionForeground);
+}
+
+/* Los tres botones de estado pegados, como un control segmentado. */
+#grupo-estado {
+  gap: 0;
+}
+
+#barra-herramientas .boton-estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 0;
+}
+
+#barra-herramientas .boton-estado:first-child {
+  border-radius: 2px 0 0 2px;
+}
+
+#barra-herramientas .boton-estado:last-child {
+  border-radius: 0 2px 2px 0;
+}
+
+/* Los mismos PNG de media/iconos/ que usa la vista lateral. VS Code le pone al
+   <body> la clase vscode-light / vscode-high-contrast-light en temas claros. */
+.icono-estado {
+  width: 14px;
+  height: 14px;
+}
+
+.icono-estado.para-claro,
+body.vscode-light .icono-estado.para-oscuro,
+body.vscode-high-contrast-light .icono-estado.para-oscuro {
+  display: none;
+}
+
+body.vscode-light .icono-estado.para-claro,
+body.vscode-high-contrast-light .icono-estado.para-claro {
+  display: inline;
+}
+
+/* ---------- Área de páginas ---------- */
+
+#area-principal {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+#visor {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow: auto;
+  /* Reserva siempre el lugar de la barra de scroll: si no, al aparecer o
+     desaparecer cambia el ancho y "ajustar al ancho" podría oscilar. */
+  scrollbar-gutter: stable;
+}
+
+#paginas {
+  box-sizing: border-box;
+  /* max-content + min-width: centra las páginas cuando entran, y cuando son
+     más anchas que el visor permite scrollear hacia ambos costados. */
+  width: max-content;
+  min-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px 64px;
+}
+
+.pagina-wrapper {
+  /* El papel del PDF se muestra blanco a propósito, como en cualquier
+     lector, independientemente del tema del editor. */
+  background: #ffffff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+}
+
+.pagina-wrapper canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#mensaje-error {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  margin: 8px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  color: var(--vscode-foreground);
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+}
+
+/* ---------- Panel de notas ---------- */
+
+#panel-notas {
+  flex: none;
+  box-sizing: border-box;
+  width: min(320px, 45%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  overflow: hidden;
+  color: var(--vscode-sideBar-foreground, var(--vscode-foreground));
+  background: var(--vscode-sideBar-background, var(--vscode-editorWidget-background));
+  border-left: 1px solid var(--vscode-panel-border, transparent);
+}
+
+.panel-encabezado {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.panel-titulo {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+#estado-guardado {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+#estado-guardado.error {
+  color: var(--vscode-errorForeground);
+}
+
+#campo-notas {
+  flex: 3 1 0;
+  min-height: 120px;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  resize: none;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  font: inherit;
+  line-height: 1.5;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+}
+
+#campo-notas::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+#boton-anclar {
+  align-self: flex-start;
+}
+
+#lista-anclas {
+  flex: 2 1 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+#lista-anclas button.ancla {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 6px;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+}
+
+#lista-anclas button.ancla:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.pagina-ancla {
+  flex: none;
+  color: var(--vscode-textLink-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.texto-ancla {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#ayuda-anclas {
+  margin: 0;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* Va al final y con !important para ganarle a los display de arriba (#panel-notas, etc). */
+.oculto {
+  display: none !important;
+}
