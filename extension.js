@@ -6,6 +6,7 @@ const almacen = require('./src/almacen');
 const { armarResumen } = require('./src/resumen');
 const { armarHtmlDelVisor } = require('./src/plantilla');
 const { registrarArbolPracticos } = require('./src/arbolPracticos');
+const { registrarDecoraciones } = require('./src/decoraciones');
 
 const DEMORA_GUARDADO_NOTAS_MS = 800;
 
@@ -315,6 +316,7 @@ class ProveedorVisorPdf {
 function activate(contextoExtension) {
   contextoExtension.subscriptions.push(ProveedorVisorPdf.register(contextoExtension));
   registrarArbolPracticos(contextoExtension);
+  registrarDecoraciones(contextoExtension);
 }
 
 function deactivate() {}

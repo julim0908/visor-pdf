@@ -65,7 +65,8 @@ color de papel, guía de lectura y lectura en voz alta.
 
 - **Estado de cada PDF**: *Pendiente / En progreso / Hecho*, en el botón de la
   derecha de la barra, para llevar la cuenta de lo que ya leíste, revisaste o
-  terminaste.
+  terminaste. En el explorador de VS Code y en la pestaña del PDF aparece una
+  marca al lado del nombre: ✓ verde si está hecho y ◐ amarilla si está en progreso.
 - **Vista lateral**: el ícono de la barra de la izquierda muestra todos los PDFs
   de la carpeta abierta, agrupados por carpeta, con el estado de cada uno y
   cuántos llevás terminados.
@@ -84,7 +85,7 @@ En VS Code, abrí la vista de extensiones (`Ctrl+Shift+X`), buscá
 También desde una terminal:
 
 ```
-code --install-extension visor-de-practicos-0.4.0.vsix
+code --install-extension visor-de-practicos-0.4.1.vsix
 ```
 
 ## Dónde se guardan tus datos

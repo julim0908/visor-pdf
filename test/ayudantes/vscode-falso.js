@@ -8,6 +8,7 @@ const path = require('path');
 
 class UriFalsa {
   constructor(fsPath) {
+    this.scheme = 'file';
     this.fsPath = fsPath;
     this.path = '/' + fsPath.replace(/\\/g, '/');
   }
@@ -53,6 +54,14 @@ class ThemeColor {
   }
 }
 
+class FileDecoration {
+  constructor(badge, tooltip, color) {
+    this.badge = badge;
+    this.tooltip = tooltip;
+    this.color = color;
+  }
+}
+
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function buscarPdfs(carpeta) {
@@ -72,6 +81,7 @@ function crearVscodeFalso({ demoraMaxima = 0 } = {}) {
     vigilantes: [], // FileSystemWatcher creados: { patron, crear, cambiar, borrar }
     proveedorArbol: null,
     proveedorEditor: null,
+    proveedorDecoraciones: null,
     documentosAbiertos: [], // rutas abiertas con showTextDocument
     linksAbiertos: [], // direcciones abiertas con env.openExternal
     // Qué "elige" la persona en el diálogo de guardar: undefined = acepta la ruta
@@ -85,6 +95,7 @@ function crearVscodeFalso({ demoraMaxima = 0 } = {}) {
     TreeItem,
     ThemeIcon,
     ThemeColor,
+    FileDecoration,
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     ViewColumn: { Beside: -2 },
     Uri: {
@@ -147,6 +158,10 @@ function crearVscodeFalso({ demoraMaxima = 0 } = {}) {
       },
       registerCustomEditorProvider: (_tipo, proveedor) => {
         registro.proveedorEditor = proveedor;
+        return { dispose() {} };
+      },
+      registerFileDecorationProvider: (proveedor) => {
+        registro.proveedorDecoraciones = proveedor;
         return { dispose() {} };
       },
       showSaveDialog: async (opciones) =>
