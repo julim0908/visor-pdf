@@ -1,8 +1,8 @@
 {
   "name": "visor-de-practicos",
-  "displayName": "Visor de Prácticos",
+  "displayName": "Visor PDF",
   "description": "Visor de PDF para estudiar: marcá prácticos como hechos y tomá notas al lado.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "JulietaMontenegro",
   "license": "MIT",
   "icon": "media/icono-extension.png",
@@ -64,7 +64,7 @@
       {
         "command": "visorPracticos.refrescar",
         "title": "Actualizar lista",
-        "category": "Visor de Prácticos",
+        "category": "Visor PDF",
         "icon": "$(refresh)"
       }
     ],
@@ -80,7 +80,7 @@
     "customEditors": [
       {
         "viewType": "visorPracticos.pdfViewer",
-        "displayName": "Visor de Prácticos",
+        "displayName": "Visor PDF",
         "selector": [
           {
             "filenamePattern": "*.pdf"

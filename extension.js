@@ -338,7 +338,7 @@ class ProveedorVisorPdf {
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource}; style-src ${webview.cspSource}; script-src ${webview.cspSource}; font-src ${webview.cspSource}; connect-src ${webview.cspSource}; worker-src blob:;">
 <link rel="stylesheet" href="${uriViewerCss}">
-<title>Visor de Prácticos</title>
+<title>Visor PDF</title>
 </head>
 <body>
 <div id="barra-herramientas">

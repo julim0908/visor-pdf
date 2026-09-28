@@ -1,4 +1,4 @@
-# Visor de Prácticos
+# Visor PDF
 
 Un visor de PDF para VS Code pensado para estudiar: abrís los prácticos de la
 facultad, los marcás como pendientes, en progreso o hechos, y tomás notas al
@@ -45,7 +45,7 @@ lado del PDF.
 ## Instalación
 
 En VS Code, abrí la vista de extensiones (`Ctrl+Shift+X`), buscá
-**Visor de Prácticos** e instalala.
+**Visor PDF** e instalala.
 
 ### Desde un archivo .vsix
 
@@ -56,7 +56,7 @@ En VS Code, abrí la vista de extensiones (`Ctrl+Shift+X`), buscá
 También desde una terminal:
 
 ```
-code --install-extension visor-de-practicos-0.3.0.vsix
+code --install-extension visor-de-practicos-0.3.1.vsix
 ```
 
 ## Dónde se guardan tus datos

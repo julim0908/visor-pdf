@@ -43,7 +43,7 @@ function crearItemPdf(uriPdf, practico, carpetaIconos) {
   item.contextValue = 'pdf';
   item.command = {
     command: 'vscode.openWith',
-    title: 'Abrir en el Visor de Prácticos',
+    title: 'Abrir en Visor PDF',
     arguments: [uriPdf, ID_EDITOR]
   };
 
