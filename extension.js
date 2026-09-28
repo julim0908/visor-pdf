@@ -1,7 +1,9 @@
 // Punto de entrada de la extensión.
 // Registra el editor personalizado (el visor de PDF) y la vista lateral de prácticos.
 const vscode = require('vscode');
+const path = require('path');
 const almacen = require('./src/almacen');
+const { armarResumen } = require('./src/resumen');
 const { registrarArbolPracticos } = require('./src/arbolPracticos');
 
 const DEMORA_GUARDADO_NOTAS_MS = 800;
@@ -131,6 +133,10 @@ class ProveedorVisorPdf {
         await this.guardarResaltados(documento.uri, mensaje.resaltados);
       } else if (mensaje.tipo === 'guardar-preferencias') {
         await this.guardarPreferencias(mensaje.preferencias, webview);
+      } else if (mensaje.tipo === 'exportar-resumen') {
+        await this.exportarResumen(documento.uri, guardadoNotas);
+      } else if (mensaje.tipo === 'abrir-link' && typeof mensaje.url === 'string') {
+        await this.abrirLink(mensaje.url);
       }
     });
 
@@ -148,6 +154,44 @@ class ProveedorVisorPdf {
       // En pantalla los resaltados quedan igual; se vuelven a guardar con el próximo cambio.
       vscode.window.showErrorMessage(`No se pudieron guardar los resaltados: ${error.message}`);
     }
+  }
+
+  // Guarda un .md con las notas y resaltados del práctico y lo abre al costado.
+  async exportarResumen(uriPdf, guardadoNotas) {
+    try {
+      // Que el resumen incluya lo último que se escribió, aunque no hayan pasado los 800 ms.
+      await guardadoNotas.guardarAhora();
+      const practico = await almacen.leerPractico(uriPdf);
+      const nombrePdf = path.posix.basename(uriPdf.path);
+      const carpeta = path.posix.dirname(uriPdf.path);
+      const destino = await vscode.window.showSaveDialog({
+        title: 'Exportar resumen',
+        saveLabel: 'Guardar resumen',
+        defaultUri: uriPdf.with({ path: path.posix.join(carpeta, `${nombrePdf.replace(/\.pdf$/i, '')} - resumen.md`) }),
+        filters: { Markdown: ['md'] }
+      });
+      if (!destino) return; // la persona canceló
+
+      await vscode.workspace.fs.writeFile(destino, new TextEncoder().encode(armarResumen(nombrePdf, practico)));
+      const documentoResumen = await vscode.workspace.openTextDocument(destino);
+      await vscode.window.showTextDocument(documentoResumen, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+    } catch (error) {
+      vscode.window.showErrorMessage(`No se pudo exportar el resumen: ${error.message}`);
+    }
+  }
+
+  // Links externos del PDF. El webview no puede abrir páginas por su cuenta:
+  // se lo pide a la extensión, que solo acepta web y mail.
+  async abrirLink(url) {
+    let uri;
+    try {
+      uri = vscode.Uri.parse(url, true);
+    } catch {
+      return;
+    }
+    if (!['http', 'https', 'mailto'].includes(uri.scheme)) return;
+    // VS Code pide confirmación antes de abrir un sitio que la persona no marcó como confiable.
+    await vscode.env.openExternal(uri);
   }
 
   async guardarPreferencias(preferencias, webviewOrigen) {
@@ -299,6 +343,9 @@ class ProveedorVisorPdf {
 <body>
 <div id="barra-herramientas">
   <div class="grupo">
+    <button id="boton-indice" aria-pressed="false" aria-controls="panel-indice" title="Este PDF no tiene índice" disabled>Índice</button>
+  </div>
+  <div class="grupo">
     <button id="boton-alejar" title="Alejar" aria-label="Alejar" disabled>−</button>
     <span id="etiqueta-zoom">100%</span>
     <button id="boton-acercar" title="Acercar" aria-label="Acercar" disabled>+</button>
@@ -342,6 +389,10 @@ class ProveedorVisorPdf {
   </div>
 </div>
 <div id="area-principal">
+  <aside id="panel-indice" class="oculto" aria-label="Índice del PDF">
+    <div class="panel-titulo">Índice</div>
+    <ul id="lista-indice" class="arbol-indice"></ul>
+  </aside>
   <div id="zona-visor">
     <div id="visor">
       <div id="mensaje-error" class="oculto"></div>
@@ -357,6 +408,7 @@ class ProveedorVisorPdf {
       <button id="boton-a-notas" title="Copiar el texto a las notas, anclado a su página">A notas</button>
       <button id="boton-quitar-resaltado" title="Quitar este resaltado (tecla Supr)">Quitar</button>
     </div>
+    <button id="boton-volver" class="oculto" title="Volver a donde estabas (Alt+←)">← Volver</button>
   </div>
   <aside id="panel-notas" class="oculto" aria-label="Notas del práctico">
     <div class="panel-encabezado">
@@ -371,6 +423,7 @@ class ProveedorVisorPdf {
     <div class="panel-titulo">Resaltados</div>
     <p id="ayuda-resaltados">Seleccioná texto del PDF y elegí un color para resaltarlo.</p>
     <ul id="lista-resaltados"></ul>
+    <button id="boton-exportar" title="Guarda un archivo Markdown con tus notas y resaltados, ordenados por página" disabled>Exportar resumen…</button>
   </aside>
 </div>
 <script id="config-datos" type="application/json">${configuracion}</script>

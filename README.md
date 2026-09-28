@@ -8,6 +8,10 @@ lado del PDF.
 
 - **Visor de PDF**: al hacer doble click en un `.pdf`, se abre con este visor.
   Recuerda el zoom y la última página que viste de cada archivo.
+- **Índice y links**: si el PDF tiene marcadores, el botón *Índice* los muestra
+  a la izquierda para saltar entre secciones. Los links del PDF se pueden
+  clickear (los externos se abren en el navegador, con la confirmación de VS
+  Code). Después de un salto aparece *← Volver* (también `Alt+←`).
 - **Seleccionar y copiar texto** del PDF, como en cualquier lector.
 - **Buscar** con `Ctrl+F` (o el campo de la barra): no distingue mayúsculas ni
   tildes, así que "pagina" encuentra "Página". `Enter` va a la siguiente
@@ -33,6 +37,8 @@ lado del PDF.
 - **Notas ancladas a una página**: cualquier línea que tenga `[pág. 5]` queda
   anclada a esa página. El botón *Anclar a pág. X* agrega la etiqueta con la
   página que estás viendo, y en *Notas por página* hacés click para saltar ahí.
+- **Exportar resumen**: al final del panel de notas, guarda un archivo Markdown
+  con tus notas y resaltados ordenados por página, para repasar o compartir.
 - **Vista "Prácticos"** en la barra de la izquierda: todos los PDFs de la
   carpeta abierta, agrupados por carpeta, con su estado y cuántos llevás hechos.
 
@@ -45,7 +51,7 @@ lado del PDF.
 También desde una terminal:
 
 ```
-code --install-extension visor-de-practicos-0.2.0.vsix
+code --install-extension visor-de-practicos-0.3.0.vsix
 ```
 
 ## Dónde se guardan tus datos
@@ -83,6 +89,25 @@ Las opciones de lectura (color de papel y guía) se guardan en VS Code, no en
 
 Click derecho en la pestaña del PDF → **Reopen Editor With…** y elegí otro
 editor. Ahí mismo podés cambiar cuál se usa por defecto.
+
+## Para desarrollar
+
+Hace falta [Node.js](https://nodejs.org) 22 o más nuevo.
+
+```
+npm install        # instala pdf.js y la herramienta para empaquetar
+npm test           # corre las pruebas automáticas (no abre VS Code)
+npm run banco      # abre el visor en el navegador: http://localhost:5757
+npm run empaquetar # genera el .vsix para compartir
+```
+
+Para probar dentro de VS Code, abrí esta carpeta y apretá `F5`.
+
+- `extension.js`: registra el visor y maneja lo que pide (leer el PDF, guardar datos).
+- `src/`: código de la extensión (Node). `almacen.js` es el único que lee y
+  escribe `.practicos.json`.
+- `media/`: el visor que corre dentro de VS Code (HTML/CSS/JS del navegador).
+- `test/`: pruebas automáticas, el `vscode` simulado y el banco de pruebas.
 
 ## Licencia
 

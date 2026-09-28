@@ -3,6 +3,9 @@
 .gitignore
 **/*.vsix
 **/*.map
+test/**
+# Solo le avisa a Node (en las pruebas) que media/ usa módulos ES; el visor no lo necesita.
+media/package.json
 
 # De pdfjs-dist (37 MB) solo usamos dos archivos y su licencia.
 node_modules/**

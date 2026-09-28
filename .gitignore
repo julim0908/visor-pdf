@@ -1,2 +1,4 @@
 node_modules/
 *.vsix
+# PDFs que genera "npm run banco"
+test/banco/pdfs/

@@ -2,7 +2,7 @@
   "name": "visor-de-practicos",
   "displayName": "Visor de Prácticos",
   "description": "Visor de PDF para estudiar: marcá prácticos como hechos y tomá notas al lado.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -90,7 +90,9 @@
     ]
   },
   "scripts": {
-    "empaquetar": "vsce package --allow-missing-repository"
+    "empaquetar": "vsce package --allow-missing-repository",
+    "test": "node --test \"test/*.test.js\" \"test/*.test.mjs\"",
+    "banco": "node test/banco/servidor.js"
   },
   "dependencies": {
     "pdfjs-dist": "^4.0.0"

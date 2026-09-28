@@ -5,6 +5,7 @@ import { armarTextoPagina, normalizarConMapa, normalizarConsulta, buscarEnTexto 
 import { marcarEnCapa } from './marcas.js';
 import { crearLectura } from './lectura.js';
 import { crearResaltador } from './resaltador.js';
+import { resolverDestino, armarIndice, renderizarLinks } from './indice.js';
 
 const vscode = acquireVsCodeApi();
 
@@ -33,6 +34,11 @@ const campoBusqueda = document.getElementById('campo-busqueda');
 const resultadoBusqueda = document.getElementById('resultado-busqueda');
 const botonAnterior = document.getElementById('boton-anterior');
 const botonSiguiente = document.getElementById('boton-siguiente');
+const botonIndice = document.getElementById('boton-indice');
+const panelIndice = document.getElementById('panel-indice');
+const listaIndice = document.getElementById('lista-indice');
+const botonVolver = document.getElementById('boton-volver');
+const botonExportar = document.getElementById('boton-exportar');
 
 const PASOS_ZOOM = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 const ZOOM_MINIMO = PASOS_ZOOM[0];
@@ -45,6 +51,10 @@ const DESPLAZAMIENTO_DETECCION = 24;
 
 const estado = {
   pdfjsLib: null,
+  documentoPdf: null,
+  panelIndiceVisible: false,
+  // Lugares desde donde se saltó con un link o el índice, para el botón "Volver".
+  historial: [],
   // Por página: { pagina, anchoBase, altoBase, wrapper, canvas, renderizada, tareaRender,
   //   promesaTexto, texto, capaTexto }
   paginas: [],
@@ -133,6 +143,7 @@ async function iniciar() {
     configurarNotas();
     configurarBusqueda();
     configurarSeleccion();
+    configurarIndice();
 
     // Avisamos a la extensión que ya podemos recibir el PDF.
     vscode.postMessage({ tipo: 'listo' });
@@ -147,10 +158,20 @@ async function cargarPdf(pdfjsLib, datosPdf, vistaGuardada) {
 
   try {
     const documentoPdf = await pdfjsLib.getDocument({ data: datosPdf }).promise;
+    estado.documentoPdf = documentoPdf;
     await construirPaginas(documentoPdf);
   } catch (error) {
     mostrarError(`No se pudo abrir el PDF: ${error.message}`);
     return;
+  }
+
+  // El índice también va antes del zoom: si su panel está abierto, ocupa ancho.
+  const entradasIndice = await estado.documentoPdf.getOutline().catch(() => null);
+  if (entradasIndice && entradasIndice.length > 0) {
+    armarIndice(listaIndice, entradasIndice, irAEntradaIndice);
+    botonIndice.disabled = false;
+    botonIndice.title = 'Mostrar u ocultar el índice';
+    mostrarPanelIndice(Boolean(vistaGuardada && vistaGuardada.panelIndice));
   }
 
   if (vistaGuardada && vistaGuardada.modoZoom === 'manual') {
@@ -194,7 +215,8 @@ async function construirPaginas(documentoPdf) {
       tareaRender: null,
       promesaTexto: null,
       texto: null,
-      capaTexto: null
+      capaTexto: null,
+      linksArmados: false
     });
   }
 }
@@ -274,6 +296,14 @@ function observarPaginas() {
           renderizarPagina(info);
         }
         if (!info.capaTexto) renderizarCapaTexto(info);
+        if (!info.linksArmados) {
+          info.linksArmados = true;
+          renderizarLinks(info, {
+            alLinkExterno: (url) => vscode.postMessage({ tipo: 'abrir-link', url }),
+            alLinkInterno: irADestino,
+            alAccion: ejecutarAccion
+          }).catch((error) => console.warn('Links de la página', info.wrapper.dataset.numeroPagina, error));
+        }
       }
     },
     { root: visor, rootMargin: '300px 0px' }
@@ -428,7 +458,8 @@ function guardarVista() {
     modoZoom: estado.modoZoom,
     zoom: estado.modoZoom === 'manual' ? estado.zoom : null,
     pagina: estado.paginaActual,
-    panelNotas: estado.panelNotasVisible
+    panelNotas: estado.panelNotasVisible,
+    panelIndice: estado.panelIndiceVisible
   };
   const serializada = JSON.stringify(vista);
   if (serializada === estado.ultimaVistaEnviada) return;
@@ -477,6 +508,7 @@ function mostrarPanelNotas(visible) {
 function cargarNotas(practico) {
   campoNotas.disabled = !practico;
   botonAnclar.disabled = !practico;
+  botonExportar.disabled = !practico;
   campoNotas.value = practico ? practico.notas || '' : '';
   campoNotas.placeholder = practico
     ? 'Escribí tus notas acá…'
@@ -826,6 +858,106 @@ function configurarSeleccion() {
     }
     rangoAnterior = rango.cloneRange();
   });
+}
+
+// ---------- Índice, links y "Volver" ----------
+
+function mostrarPanelIndice(visible) {
+  estado.panelIndiceVisible = visible;
+  panelIndice.classList.toggle('oculto', !visible);
+  botonIndice.classList.toggle('activo', visible);
+  botonIndice.setAttribute('aria-pressed', String(visible));
+}
+
+async function irAEntradaIndice(entrada) {
+  if (entrada.dest) await irADestino(entrada.dest);
+  else if (entrada.url) vscode.postMessage({ tipo: 'abrir-link', url: entrada.url });
+  else if (entrada.action) ejecutarAccion(entrada.action);
+}
+
+async function irADestino(destino) {
+  let lugar = null;
+  try {
+    lugar = await resolverDestino(estado.documentoPdf, destino);
+  } catch (error) {
+    console.warn('Destino del PDF que no se pudo resolver', destino, error);
+  }
+  const info = lugar && estado.paginas[lugar.pagina - 1];
+  if (!info) return;
+
+  recordarPosicion();
+  if (lugar.arriba === null) {
+    irAPagina(lugar.pagina);
+    return;
+  }
+  // Convertimos la altura del PDF (que se mide desde abajo) a píxeles de la página.
+  const [, y] = info.pagina.getViewport({ scale: estado.zoom }).convertToViewportPoint(0, lugar.arriba);
+  visor.scrollTop = info.wrapper.offsetTop + Math.max(y, 0) - 8;
+  estado.scrollDelSalto = visor.scrollTop;
+  campoPagina.value = String(lugar.pagina);
+  establecerPaginaActual(lugar.pagina);
+}
+
+// Links que en vez de un destino tienen una acción ("página siguiente", etc.).
+function ejecutarAccion(accion) {
+  const destinos = {
+    NextPage: estado.paginaActual + 1,
+    PrevPage: estado.paginaActual - 1,
+    FirstPage: 1,
+    LastPage: estado.paginas.length
+  };
+  if (accion === 'GoBack') {
+    volver();
+  } else if (destinos[accion] !== undefined) {
+    recordarPosicion();
+    irAPagina(destinos[accion]);
+  }
+}
+
+// Guardamos la posición como "página + fracción de la página", para que siga
+// siendo correcta aunque después cambie el zoom.
+function recordarPosicion() {
+  if (estado.paginas.length === 0) return;
+  const pagina = paginaEnPosicion(visor.scrollTop);
+  const wrapper = estado.paginas[pagina - 1].wrapper;
+  estado.historial.push({
+    pagina: estado.paginaActual,
+    paginaAncla: pagina,
+    fraccion: (visor.scrollTop - wrapper.offsetTop) / wrapper.offsetHeight
+  });
+  actualizarBotonVolver();
+}
+
+function volver() {
+  const anterior = estado.historial.pop();
+  if (!anterior) return;
+  const wrapper = estado.paginas[anterior.paginaAncla - 1].wrapper;
+  visor.scrollTop = wrapper.offsetTop + anterior.fraccion * wrapper.offsetHeight;
+  estado.scrollDelSalto = visor.scrollTop;
+  campoPagina.value = String(anterior.pagina);
+  establecerPaginaActual(anterior.pagina);
+  actualizarBotonVolver();
+}
+
+function actualizarBotonVolver() {
+  const anterior = estado.historial[estado.historial.length - 1];
+  botonVolver.classList.toggle('oculto', !anterior);
+  if (anterior) botonVolver.textContent = `← Volver a la pág. ${anterior.pagina}`;
+}
+
+function configurarIndice() {
+  botonIndice.addEventListener('click', () => {
+    mostrarPanelIndice(!estado.panelIndiceVisible);
+    guardarVista();
+  });
+  botonVolver.addEventListener('click', volver);
+  document.addEventListener('keydown', (evento) => {
+    if (evento.altKey && evento.key === 'ArrowLeft') {
+      evento.preventDefault();
+      volver();
+    }
+  });
+  botonExportar.addEventListener('click', () => vscode.postMessage({ tipo: 'exportar-resumen' }));
 }
 
 // ---------- Barra de herramientas ----------
