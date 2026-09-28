@@ -135,6 +135,7 @@ npm install        # instala pdf.js y la herramienta para empaquetar
 npm test           # corre las pruebas automáticas (no abre VS Code)
 npm run banco      # abre el visor en el navegador: http://localhost:5757
 npm run empaquetar # genera el .vsix para compartir
+npm run capturas   # regenera las imágenes de docs/imagenes (capturas, GIF y portada)
 ```
 
 Para probar dentro de VS Code, abrí esta carpeta y apretá `F5`.

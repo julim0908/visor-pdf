@@ -99,7 +99,8 @@
   "scripts": {
     "empaquetar": "vsce package --allow-missing-repository",
     "test": "node --test \"test/*.test.js\" \"test/*.test.mjs\"",
-    "banco": "node test/banco/servidor.js"
+    "banco": "node test/banco/servidor.js",
+    "capturas": "node test/demo/capturar.js"
   },
   "dependencies": {
     "pdfjs-dist": "^4.0.0"

@@ -4,6 +4,8 @@
 **/*.vsix
 **/*.map
 test/**
+# Las imágenes de presentación se ven desde GitHub, no van dentro de la extensión.
+docs/**
 # Solo le avisa a Node (en las pruebas) que media/ usa módulos ES; el visor no lo necesita.
 media/package.json
 
