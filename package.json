@@ -2,9 +2,17 @@
   "name": "visor-de-practicos",
   "displayName": "Visor PDF",
   "description": "Visor de PDF para VS Code: leé, buscá, resaltá, escuchá en voz alta y tomá notas en cualquier PDF.",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "publisher": "JulietaMontenegro",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/julim0908/visor-pdf.git"
+  },
+  "bugs": {
+    "url": "https://github.com/julim0908/visor-pdf/issues"
+  },
+  "homepage": "https://github.com/julim0908/visor-pdf#readme",
   "icon": "media/icono-extension.png",
   "engines": {
     "vscode": "^1.85.0"
@@ -97,7 +105,7 @@
     ]
   },
   "scripts": {
-    "empaquetar": "vsce package --allow-missing-repository",
+    "empaquetar": "vsce package",
     "test": "node --test \"test/*.test.js\" \"test/*.test.mjs\"",
     "banco": "node test/banco/servidor.js",
     "capturas": "node test/demo/capturar.js"

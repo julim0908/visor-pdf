@@ -1,11 +1,24 @@
 # Visor PDF
 
+[![Versión en el Marketplace](https://img.shields.io/visual-studio-marketplace/v/JulietaMontenegro.visor-de-practicos?label=Marketplace)](https://marketplace.visualstudio.com/items?itemName=JulietaMontenegro.visor-de-practicos)
+[![Instalaciones](https://img.shields.io/visual-studio-marketplace/i/JulietaMontenegro.visor-de-practicos)](https://marketplace.visualstudio.com/items?itemName=JulietaMontenegro.visor-de-practicos)
+
 Un visor de PDF completo dentro de VS Code. Abrí cualquier PDF (apuntes, papers,
 manuales, libros, informes, documentación) y leelo, buscá, resaltá, escuchalo en
 voz alta y tomá notas al lado, sin salir del editor.
 
 Está pensado para que leer sea cómodo para todas las personas, con opciones como
 color de papel, guía de lectura y lectura en voz alta.
+
+![Recorrido de Visor PDF: resaltar, cambiar el color de papel, escuchar el texto, usar la guía de lectura y tomar notas](docs/imagenes/recorrido.gif)
+
+## Capturas
+
+![Resaltados en cuatro estilos, notas al costado y estado del documento](docs/imagenes/visor-principal.png)
+
+![Color de papel y guía de lectura](docs/imagenes/opciones-de-lectura.png)
+
+![Lectura en voz alta con la palabra marcada](docs/imagenes/lectura-en-voz-alta.png)
 
 ## Qué hace
 
