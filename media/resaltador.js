@@ -4,14 +4,21 @@
 // Cada cambio queda en el historial, así se puede deshacer con Ctrl+Z.
 import { posicionEnTexto } from './marcas.js';
 import { crearMenuDesplegable } from './menus.js';
+import { t } from './idioma.js';
 
-const NOMBRES_COLOR = { amarillo: 'Amarillo', verde: 'Verde', rosa: 'Rosa', celeste: 'Celeste' };
+const NOMBRES_COLOR = { amarillo: t('Amarillo'), verde: t('Verde'), rosa: t('Rosa'), celeste: t('Celeste') };
 const COLOR_POR_TECLA = { 1: 'amarillo', 2: 'verde', 3: 'rosa', 4: 'celeste' };
 // "Color" especial del botón Resaltar: en vez de marcar, borra lo que se seleccione.
 const BORRADOR = 'borrar';
 
 const esCampoEditable = (elemento) =>
   elemento instanceof HTMLElement && (elemento.matches('input, textarea, select') || elemento.isContentEditable);
+
+// Arma un texto traducido con elementos adentro: en "Modo {0}: …" el {0} es `elementos[0]`.
+function llenarConElementos(contenedor, plantilla, elementos) {
+  const partes = plantilla.split(/\{(\d+)\}/);
+  contenedor.replaceChildren(...partes.map((parte, i) => (i % 2 === 1 ? elementos[Number(parte)] : parte)));
+}
 
 const nuevoId = () => `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 const copiar = (lista) => lista.map((r) => ({ ...r }));
@@ -37,6 +44,16 @@ export function crearResaltador(visorApi) {
   const textoAvisoModo = document.getElementById('texto-aviso-modo');
   const botonSalirModo = document.getElementById('boton-salir-modo');
   crearMenuDesplegable(botonColorResaltador, menuColor);
+  // Comentarios: el botón del menú flotante y el cuadro donde se escriben.
+  const botonComentar = document.getElementById('boton-comentar');
+  const textoBotonComentar = document.getElementById('texto-boton-comentar');
+  const editor = document.getElementById('editor-comentario');
+  const citaComentario = document.getElementById('cita-comentario');
+  const campoComentario = document.getElementById('campo-comentario');
+  const botonGuardarComentario = document.getElementById('boton-guardar-comentario');
+  const botonCancelarComentario = document.getElementById('boton-cancelar-comentario');
+  const botonBorrarComentario = document.getElementById('boton-borrar-comentario');
+  let comentando = null; // id del resaltado cuyo comentario se está escribiendo
 
   let colorActual = 'amarillo';
   let ultimoColor = 'amarillo'; // el último color de verdad (no el borrador)
@@ -75,7 +92,13 @@ export function crearResaltador(visorApi) {
       const estabaPerdido = r.perdido;
       reubicar(r, texto.textoPlano);
       if (r.perdido !== estabaPerdido) programarLista();
-      if (!r.perdido) marcas.push({ inicio: r.inicio, fin: r.fin, clases: ['marca', `marca-${r.color}`], id: r.id });
+      if (r.perdido) continue;
+      const marca = { inicio: r.inicio, fin: r.fin, clases: ['marca', `marca-${r.color}`], id: r.id };
+      if (r.comentario) {
+        marca.clases.push('con-comentario');
+        marca.titulo = t('Comentario: {0}', r.comentario);
+      }
+      marcas.push(marca);
     }
     return marcas;
   }
@@ -138,8 +161,8 @@ export function crearResaltador(visorApi) {
     return tramos;
   }
 
-  const seTocan = (r, t) => r.pagina === t.pagina && r.inicio < t.fin && r.fin > t.inicio;
-  const hayResaltadosEn = (tramos) => resaltados.some((r) => tramos.some((t) => seTocan(r, t)));
+  const seTocan = (r, tramo) => r.pagina === tramo.pagina && r.inicio < tramo.fin && r.fin > tramo.inicio;
+  const hayResaltadosEn = (tramos) => resaltados.some((r) => tramos.some((tramo) => seTocan(r, tramo)));
 
   // ---------- Menú flotante ----------
 
@@ -152,18 +175,24 @@ export function crearResaltador(visorApi) {
     }
     // "Quitar resaltado" aparece al tocar un resaltado o al seleccionar texto que ya lo tiene.
     botonQuitar.classList.toggle('oculto', !editando && !hayResaltadosEn(modo.tramos));
+    const conComentario = editando && resaltados.some((r) => r.id === modo.id && r.comentario);
+    textoBotonComentar.textContent = conComentario ? t('Editar comentario') : t('Comentar');
     menu.classList.remove('oculto');
+    ubicar(menu, rectReferencia);
+  }
 
-    // Debajo de la selección (o arriba si no entra), sin salirse del visor.
+  // Pone un elemento flotante debajo de `rectReferencia` (o arriba si no entra),
+  // sin salirse del visor.
+  function ubicar(elemento, rectReferencia) {
     const zonaRect = zona.getBoundingClientRect();
     let izquierda = rectReferencia.left - zonaRect.left;
     let arriba = rectReferencia.bottom - zonaRect.top + 6;
-    if (arriba + menu.offsetHeight > zona.clientHeight) {
-      arriba = rectReferencia.top - zonaRect.top - menu.offsetHeight - 6;
+    if (arriba + elemento.offsetHeight > zona.clientHeight) {
+      arriba = rectReferencia.top - zonaRect.top - elemento.offsetHeight - 6;
     }
-    izquierda = Math.min(Math.max(izquierda, 4), zona.clientWidth - menu.offsetWidth - 4);
-    menu.style.left = `${izquierda}px`;
-    menu.style.top = `${Math.max(arriba, 4)}px`;
+    izquierda = Math.min(Math.max(izquierda, 4), zona.clientWidth - elemento.offsetWidth - 4);
+    elemento.style.left = `${izquierda}px`;
+    elemento.style.top = `${Math.max(arriba, 4)}px`;
   }
 
   function ocultarMenu() {
@@ -174,13 +203,13 @@ export function crearResaltador(visorApi) {
   // ---------- Acciones (todas quedan en el historial) ----------
 
   function crearResaltados(tramos, color) {
-    for (const t of tramos) {
+    for (const tramo of tramos) {
       // Un resaltado nuevo reemplaza a los que quedan completamente adentro suyo.
-      resaltados = resaltados.filter((r) => !(r.pagina === t.pagina && r.inicio >= t.inicio && r.fin <= t.fin));
-      resaltados.push({ id: nuevoId(), ...t, color, creado: new Date().toISOString() });
+      resaltados = resaltados.filter((r) => !(r.pagina === tramo.pagina && r.inicio >= tramo.inicio && r.fin <= tramo.fin));
+      resaltados.push({ id: nuevoId(), ...tramo, color, creado: new Date().toISOString() });
     }
     document.getSelection().removeAllRanges();
-    cambiaron(`resaltado en ${NOMBRES_COLOR[color].toLowerCase()}`);
+    cambiaron(t('resaltado en {0}', NOMBRES_COLOR[color].toLowerCase()));
     if (visorApi.alResaltar) visorApi.alResaltar();
   }
 
@@ -193,7 +222,7 @@ export function crearResaltador(visorApi) {
     }
     const resultado = [];
     for (const r of resaltados) {
-      const tramo = tramos.find((t) => seTocan(r, t));
+      const tramo = tramos.find((otro) => seTocan(r, otro));
       if (!tramo) {
         resultado.push(r);
         continue;
@@ -211,12 +240,12 @@ export function crearResaltador(visorApi) {
     }
     resaltados = resultado;
     document.getSelection().removeAllRanges();
-    cambiaron('resaltado borrado');
+    cambiaron(t('resaltado borrado'));
   }
 
   function quitarPorId(id) {
     resaltados = resaltados.filter((r) => r.id !== id);
-    cambiaron('resaltado quitado');
+    cambiaron(t('resaltado quitado'));
   }
 
   function aplicarColor(color) {
@@ -231,7 +260,7 @@ export function crearResaltador(visorApi) {
     ocultarMenu();
     if (!resaltado || resaltado.color === color) return;
     resaltado.color = color;
-    cambiaron(`color cambiado a ${NOMBRES_COLOR[color].toLowerCase()}`);
+    cambiaron(t('color cambiado a {0}', NOMBRES_COLOR[color].toLowerCase()));
   }
 
   function quitar() {
@@ -245,9 +274,82 @@ export function crearResaltador(visorApi) {
   function pasarANotas() {
     if (!modo) return;
     const tramos = modo.tipo === 'crear' ? modo.tramos : resaltados.filter((r) => r.id === modo.id);
-    visorApi.agregarLineasANotas(tramos.map((t) => `[pág. ${t.pagina}] «${t.texto.replace(/\s+/g, ' ')}»`));
+    visorApi.agregarLineasANotas(
+      tramos.map((tramo) => `${t('[pág. {0}]', tramo.pagina)} ${t('«{0}»', tramo.texto.replace(/\s+/g, ' '))}`)
+    );
     if (modo.tipo === 'crear') document.getSelection().removeAllRanges();
     ocultarMenu();
+  }
+
+  // ---------- Comentarios ----------
+
+  const selectorDe = (id) => `.textLayer [data-resaltado="${CSS.escape(id)}"]`;
+
+  // Botón "Comentar" del menú: sobre un resaltado edita su comentario; sobre texto
+  // seleccionado primero lo resalta (con el color elegido) y después lo comenta.
+  function comentarModoActual() {
+    if (!modo) return;
+    const actual = modo;
+    ocultarMenu();
+    let id = actual.id;
+    if (actual.tipo === 'crear') {
+      const existentes = new Set(resaltados.map((r) => r.id));
+      crearResaltados(actual.tramos, colorActual === BORRADOR ? ultimoColor : colorActual);
+      const nuevo = resaltados.find((r) => !existentes.has(r.id));
+      if (!nuevo) return;
+      id = nuevo.id;
+    }
+    abrirEditorComentario(id);
+  }
+
+  function abrirEditorComentario(id) {
+    const r = resaltados.find((x) => x.id === id);
+    const tramos = zona.querySelectorAll(selectorDe(id));
+    if (!r || tramos.length === 0) return;
+    comentando = id;
+    citaComentario.textContent = r.texto.replace(/\s+/g, ' ');
+    campoComentario.value = r.comentario || '';
+    botonBorrarComentario.classList.toggle('oculto', !r.comentario);
+    editor.classList.remove('oculto');
+    ubicar(editor, tramos[tramos.length - 1].getBoundingClientRect());
+    campoComentario.focus();
+    campoComentario.setSelectionRange(campoComentario.value.length, campoComentario.value.length);
+  }
+
+  // Desde la lista del panel: primero va hasta el resaltado (puede tener que
+  // dibujar la página) y recién ahí abre el cuadro al lado.
+  function comentarDesdeLista(r) {
+    visorApi.irAMarca(r.pagina, selectorDe(r.id));
+    const limite = performance.now() + 3000;
+    const intentar = () => {
+      // Dos cuadros más, para que el scroll del salto ya haya pasado.
+      if (zona.querySelector(selectorDe(r.id))) {
+        requestAnimationFrame(() => requestAnimationFrame(() => abrirEditorComentario(r.id)));
+      } else if (performance.now() < limite) {
+        requestAnimationFrame(intentar);
+      }
+    };
+    requestAnimationFrame(intentar);
+  }
+
+  // Cerrar guardando (Enter, "Guardar", click afuera) o descartando (Esc, "Cancelar").
+  function cerrarEditorComentario(guardar) {
+    if (comentando === null) return;
+    const id = comentando;
+    comentando = null;
+    editor.classList.add('oculto');
+    if (guardar) cambiarComentario(id, campoComentario.value);
+  }
+
+  function cambiarComentario(id, texto) {
+    const r = resaltados.find((x) => x.id === id);
+    if (!r) return;
+    const anterior = r.comentario || '';
+    const nuevo = texto.trim();
+    if (nuevo === anterior) return;
+    if (nuevo) r.comentario = nuevo;
+    else delete r.comentario;
+    cambiaron(!anterior ? t('comentario agregado') : nuevo ? t('comentario editado') : t('comentario borrado'));
   }
 
   function ordenar() {
@@ -301,17 +403,17 @@ export function crearResaltador(visorApi) {
   function actualizarAvisoModo() {
     const destacado = document.createElement('strong');
     if (colorActual === BORRADOR) {
-      destacado.textContent = 'borrador';
-      textoAvisoModo.replaceChildren('Modo ', destacado, ': seleccioná texto resaltado para quitarle el resaltado.');
+      destacado.textContent = t('borrador');
+      llenarConElementos(textoAvisoModo, t('Modo {0}: seleccioná texto resaltado para quitarle el resaltado.'), [destacado]);
     } else {
       destacado.textContent = NOMBRES_COLOR[colorActual].toLowerCase();
-      textoAvisoModo.replaceChildren('Modo resaltador: seleccioná texto para resaltarlo en ', destacado, '.');
+      llenarConElementos(textoAvisoModo, t('Modo resaltador: seleccioná texto para resaltarlo en {0}.'), [destacado]);
     }
     // Las teclas del modo, a la vista mientras se usa.
     const tecla = (texto) => Object.assign(document.createElement('kbd'), { textContent: texto });
     const atajos = document.createElement('span');
     atajos.className = 'atajos-modo';
-    atajos.append(tecla('1'), '–', tecla('4'), ' color · ', tecla('5'), ' borrador · ', tecla('Ctrl+Z'), ' deshace');
+    llenarConElementos(atajos, t('{0}–{1} color · {2} borrador · {3} deshace'), [tecla('1'), tecla('4'), tecla('5'), tecla('Ctrl+Z')]);
     textoAvisoModo.append(atajos);
   }
 
@@ -368,7 +470,7 @@ export function crearResaltador(visorApi) {
 
       const etiqueta = document.createElement('span');
       etiqueta.className = 'pagina-ancla';
-      etiqueta.textContent = `pág. ${r.pagina}`;
+      etiqueta.textContent = t('pág. {0}', r.pagina);
 
       const resumen = document.createElement('span');
       resumen.className = 'texto-ancla';
@@ -378,24 +480,44 @@ export function crearResaltador(visorApi) {
       boton.className = 'ancla';
       boton.classList.toggle('perdido', Boolean(r.perdido));
       boton.title = r.perdido
-        ? 'Este texto ya no se encuentra en la página (¿cambió el PDF?)'
-        : `Ir al resaltado de la página ${r.pagina}`;
-      boton.setAttribute('aria-label', `${NOMBRES_COLOR[r.color]}, página ${r.pagina}: ${resumen.textContent}`);
+        ? t('Este texto ya no se encuentra en la página (¿cambió el PDF?)')
+        : t('Ir al resaltado de la página {0}', r.pagina);
+      boton.setAttribute('aria-label', t('{0}, página {1}: {2}', NOMBRES_COLOR[r.color], r.pagina, resumen.textContent));
       boton.append(muestra, etiqueta, resumen);
+      if (r.comentario) {
+        const comentario = document.createElement('span');
+        comentario.className = 'comentario-item';
+        comentario.textContent = r.comentario.replace(/\s+/g, ' ');
+        comentario.title = r.comentario;
+        boton.append(comentario);
+      }
       boton.addEventListener('click', () =>
         visorApi.irAMarca(r.pagina, `[data-resaltado="${CSS.escape(r.id)}"]`)
       );
 
+      const botonComentarItem = document.createElement('button');
+      botonComentarItem.className = 'comentar-item';
+      botonComentarItem.append(botonComentar.querySelector('svg').cloneNode(true));
+      botonComentarItem.title = r.comentario ? t('Editar el comentario') : t('Escribir un comentario');
+      botonComentarItem.setAttribute(
+        'aria-label',
+        r.comentario
+          ? t('Editar el comentario del resaltado de la página {0}: {1}', r.pagina, resumen.textContent)
+          : t('Comentar el resaltado de la página {0}: {1}', r.pagina, resumen.textContent)
+      );
+      botonComentarItem.disabled = Boolean(r.perdido);
+      botonComentarItem.addEventListener('click', () => comentarDesdeLista(r));
+
       const botonQuitarItem = document.createElement('button');
       botonQuitarItem.className = 'quitar-item';
       botonQuitarItem.textContent = '×';
-      botonQuitarItem.title = 'Quitar este resaltado (se puede deshacer con Ctrl+Z)';
-      botonQuitarItem.setAttribute('aria-label', `Quitar el resaltado de la página ${r.pagina}: ${resumen.textContent}`);
+      botonQuitarItem.title = t('Quitar este resaltado (se puede deshacer con Ctrl+Z)');
+      botonQuitarItem.setAttribute('aria-label', t('Quitar el resaltado de la página {0}: {1}', r.pagina, resumen.textContent));
       botonQuitarItem.addEventListener('click', () => quitarPorId(r.id));
 
       const item = document.createElement('li');
       item.className = 'item-con-quitar';
-      item.append(boton, botonQuitarItem);
+      item.append(boton, botonComentarItem, botonQuitarItem);
       lista.append(item);
     }
     ayuda.classList.toggle('oculto', resaltados.length > 0);
@@ -407,6 +529,8 @@ export function crearResaltador(visorApi) {
   // se vuelve a abrir al soltar el mouse).
   document.addEventListener('pointerdown', (evento) => {
     if (!menu.contains(evento.target)) ocultarMenu();
+    // Un click afuera del cuadro del comentario lo guarda, como las notas.
+    if (!editor.contains(evento.target)) cerrarEditorComentario(true);
   });
 
   document.addEventListener('pointerup', (evento) => {
@@ -433,7 +557,29 @@ export function crearResaltador(visorApi) {
     mostrarMenu({ tipo: 'editar', id: tramo.dataset.resaltado }, tramo.getBoundingClientRect());
   });
 
-  visor.addEventListener('scroll', ocultarMenu);
+  visor.addEventListener('scroll', () => {
+    ocultarMenu();
+    cerrarEditorComentario(true);
+  });
+
+  // En el comentario: Enter guarda, Shift+Enter hace una línea nueva y Esc cancela.
+  campoComentario.addEventListener('keydown', (evento) => {
+    if (evento.key === 'Enter' && !evento.shiftKey && !evento.isComposing) {
+      evento.preventDefault();
+      cerrarEditorComentario(true);
+    } else if (evento.key === 'Escape') {
+      evento.preventDefault();
+      evento.stopPropagation();
+      cerrarEditorComentario(false);
+    }
+  });
+  botonGuardarComentario.addEventListener('click', () => cerrarEditorComentario(true));
+  botonCancelarComentario.addEventListener('click', () => cerrarEditorComentario(false));
+  botonBorrarComentario.addEventListener('click', () => {
+    campoComentario.value = '';
+    cerrarEditorComentario(true);
+  });
+  botonComentar.addEventListener('click', comentarModoActual);
 
   // En modo resaltador (sin el menú flotante abierto): 1-4 cambian el color, 5 es el
   // borrador y Esc sale.
@@ -461,8 +607,8 @@ export function crearResaltador(visorApi) {
     else activarModoResaltador(!modoResaltador);
   });
 
-  // Con el menú flotante abierto: 1-4 eligen color, Supr quita, N pasa a notas,
-  // L lee en voz alta y Esc cierra.
+  // Con el menú flotante abierto: 1-4 eligen color, Supr quita, C comenta,
+  // N pasa a notas, L lee en voz alta y Esc cierra.
   document.addEventListener('keydown', (evento) => {
     if (!modo || esCampoEditable(evento.target) || evento.ctrlKey || evento.metaKey || evento.altKey) return;
     const letra = evento.key.toLowerCase();
@@ -472,6 +618,9 @@ export function crearResaltador(visorApi) {
     } else if (letra === 'n') {
       evento.preventDefault();
       pasarANotas();
+    } else if (letra === 'c') {
+      evento.preventDefault();
+      comentarModoActual();
     } else if (letra === 'l') {
       evento.preventDefault();
       leerModoActual();
@@ -506,5 +655,8 @@ export function crearResaltador(visorApi) {
   }
   elegirColor(colorActual);
 
-  return { cargar, marcasDePagina, tramosDeSeleccion };
+  // Copia de los resaltados que se ven en la página (sin los que ya no se encuentran).
+  const visibles = () => copiar(resaltados.filter((r) => !r.perdido));
+
+  return { cargar, marcasDePagina, tramosDeSeleccion, visibles };
 }

@@ -15,3 +15,8 @@ node_modules/**
 !node_modules/pdfjs-dist/LICENSE
 !node_modules/pdfjs-dist/build/pdf.min.mjs
 !node_modules/pdfjs-dist/build/pdf.worker.min.mjs
+
+# De pdf-lib (para exportar el PDF con resaltados) solo su archivo único y su licencia.
+!node_modules/pdf-lib/package.json
+!node_modules/pdf-lib/LICENSE.md
+!node_modules/pdf-lib/dist/pdf-lib.min.js

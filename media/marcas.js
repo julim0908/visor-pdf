@@ -5,9 +5,11 @@
 // armarTextoPagina (busqueda.js): los items de pdf.js uno tras otro.
 
 // Pinta las marcas en los <span> de la capa de texto (hay uno por item de texto).
-// Cada marca es { inicio, fin, clases: [...], id? }. Si dos marcas se superponen,
-// ese tramo lleva las clases de ambas. Devuelve el primer elemento con la clase
-// "actual" (la coincidencia de búsqueda seleccionada), o null.
+// Cada marca es { inicio, fin, clases: [...], id?, titulo? }. Si dos marcas se
+// superponen, ese tramo lleva las clases de ambas. El `titulo` se ve al pasar el
+// mouse, y el último tramo de una marca con título lleva además la clase
+// "fin-de-marca" (para dibujarle un indicador). Devuelve el primer elemento con la
+// clase "actual" (la coincidencia de búsqueda seleccionada), o null.
 export function marcarEnCapa(divsTexto, textosItems, inicios, marcas) {
   let elementoActual = null;
 
@@ -45,6 +47,11 @@ export function marcarEnCapa(divsTexto, textosItems, inicios, marcas) {
       tramo.className = [...new Set(activas.flatMap((m) => m.clases))].join(' ');
       const conId = activas.find((m) => m.id);
       if (conId) tramo.dataset.resaltado = conId.id;
+      const conTitulo = activas.find((m) => m.titulo);
+      if (conTitulo) {
+        tramo.title = conTitulo.titulo;
+        if (conTitulo.fin - inicioItem === hasta) tramo.classList.add('fin-de-marca');
+      }
       tramo.textContent = pedazo;
       partes.push(tramo);
       if (!elementoActual && tramo.classList.contains('actual')) elementoActual = tramo;

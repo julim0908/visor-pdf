@@ -4,10 +4,11 @@
 const vscode = require('vscode');
 const path = require('path');
 const almacen = require('./almacen');
+const { t } = require('./idioma');
 
 const DECORACIONES = {
-  hecho: { marca: '✓', color: 'charts.green', detalle: 'Visor PDF: Hecho' },
-  'en-progreso': { marca: '◐', color: 'charts.yellow', detalle: 'Visor PDF: En progreso' }
+  hecho: { marca: '✓', color: 'charts.green', estado: 'Hecho' },
+  'en-progreso': { marca: '◐', color: 'charts.yellow', estado: 'En progreso' }
 };
 
 class ProveedorDecoraciones {
@@ -27,7 +28,8 @@ class ProveedorDecoraciones {
     return this.estados.get(clave).then((estado) => {
       const decoracion = DECORACIONES[estado];
       if (!decoracion) return undefined;
-      return new vscode.FileDecoration(decoracion.marca, decoracion.detalle, new vscode.ThemeColor(decoracion.color));
+      const detalle = `Visor PDF: ${t(decoracion.estado)}`;
+      return new vscode.FileDecoration(decoracion.marca, detalle, new vscode.ThemeColor(decoracion.color));
     });
   }
 

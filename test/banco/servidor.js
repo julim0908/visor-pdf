@@ -11,7 +11,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { crearVscodeFalso, instalarVscodeFalso } = require('../ayudantes/vscode-falso');
+const { crearVscodeFalso, crearContextoFalso, instalarVscodeFalso } = require('../ayudantes/vscode-falso');
 const { generarPdfs } = require('../ayudantes/generar-pdf');
 
 const PUERTO = 5757;
@@ -35,14 +35,9 @@ const { vscode, registro } = crearVscodeFalso();
 instalarVscodeFalso(vscode);
 
 const estadoGlobal = new Map();
-require(path.join(raizExtension, 'extension.js')).activate({
-  extensionUri: vscode.Uri.file(raizExtension),
-  subscriptions: [],
-  globalState: {
-    get: (clave) => estadoGlobal.get(clave),
-    update: async (clave, valor) => estadoGlobal.set(clave, valor)
-  }
-});
+require(path.join(raizExtension, 'extension.js')).activate(
+  crearContextoFalso(vscode.Uri.file(raizExtension), estadoGlobal)
+);
 
 let clientesEventos = [];
 let manejadorMensajes = null;

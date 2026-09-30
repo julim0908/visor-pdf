@@ -41,27 +41,33 @@ function largoDePalabra(texto, posicion) {
   return palabra ? palabra[0].length : 0;
 }
 
+import { t, idioma } from './idioma.js';
+
+// La voz automática es del idioma de VS Code (español o inglés).
+const esDelIdioma = (v) => v.lang.toLowerCase().startsWith(idioma);
+
 export const hayVoz = () => typeof window !== 'undefined' && 'speechSynthesis' in window;
 
-// Voces disponibles, las de español primero.
+// Voces disponibles, las del idioma de VS Code primero.
 export function listarVoces() {
   if (!hayVoz()) return [];
   const voces = window.speechSynthesis.getVoices();
-  const esEspanol = (v) => v.lang.toLowerCase().startsWith('es');
-  return [...voces.filter(esEspanol), ...voces.filter((v) => !esEspanol(v))];
+  return [...voces.filter(esDelIdioma), ...voces.filter((v) => !esDelIdioma(v))];
 }
 
 export function alCambiarVoces(funcion) {
   if (hayVoz()) window.speechSynthesis.addEventListener('voiceschanged', funcion);
 }
 
-// Elige la voz guardada; si no está, una en español (mejor de Latinoamérica).
+// Elige la voz guardada; si no está, una del idioma de VS Code (en español, mejor
+// de Latinoamérica; en inglés, de Estados Unidos o del Reino Unido).
 function elegirVoz(uriGuardada) {
   const voces = listarVoces();
+  const preferida = idioma === 'es' ? /^es-(AR|419|MX|US|CL|CO|UY)/i : /^en-(US|GB)/i;
   return (
     voces.find((v) => v.voiceURI === uriGuardada) ||
-    voces.find((v) => /^es-(AR|419|MX|US|CL|CO|UY)/i.test(v.lang)) ||
-    voces.find((v) => v.lang.toLowerCase().startsWith('es')) ||
+    voces.find((v) => preferida.test(v.lang)) ||
+    voces.find(esDelIdioma) ||
     voces[0] ||
     null
   );
@@ -70,7 +76,7 @@ function elegirVoz(uriGuardada) {
 export function probarVoz(uriVoz, velocidad) {
   if (!hayVoz()) return;
   window.speechSynthesis.cancel();
-  const prueba = new SpeechSynthesisUtterance('Hola, así suena esta voz.');
+  const prueba = new SpeechSynthesisUtterance(t('Hola, así suena esta voz.'));
   const voz = elegirVoz(uriVoz);
   if (voz) {
     prueba.voice = voz;
@@ -105,7 +111,7 @@ export function crearLector(opciones) {
         frase.voice = voz;
         frase.lang = voz.lang;
       } else {
-        frase.lang = 'es';
+        frase.lang = idioma;
       }
       frase.rate = velocidad;
       frase.onboundary = (evento) => {
@@ -127,11 +133,11 @@ export function crearLector(opciones) {
 
   async function leer() {
     if (!hayVoz()) {
-      opciones.alError('Esta versión de VS Code no permite leer en voz alta.');
+      opciones.alError(t('Esta versión de VS Code no permite leer en voz alta.'));
       return;
     }
     if (listarVoces().length === 0) {
-      opciones.alError('No hay voces instaladas. En Windows se agregan en Configuración → Hora e idioma → Voz.');
+      opciones.alError(t('No hay voces instaladas. En Windows se agregan en Configuración → Hora e idioma → Voz.'));
       return;
     }
     detener();
@@ -146,7 +152,7 @@ export function crearLector(opciones) {
         }
       }
     } catch (error) {
-      if (miSesion === sesion) opciones.alError(`No se pudo leer en voz alta: ${error.message}`);
+      if (miSesion === sesion) opciones.alError(t('No se pudo leer en voz alta: {0}', error.message));
     }
     if (miSesion === sesion) terminar();
   }

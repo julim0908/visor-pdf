@@ -1,10 +1,14 @@
 // Arma un resumen en Markdown con las notas y los resaltados de un práctico,
 // ordenado por página, para repasar o compartir. No usa VS Code: recibe los
-// datos (los de almacen.leerPractico) y devuelve el texto.
+// datos (los de almacen.leerPractico) y devuelve el texto. `t` traduce los textos
+// (ver src/idioma.js); si no se pasa, queda en español.
 
-// Mismo formato de ancla que en media/viewer.js: "[pág. 3]" (con o sin tilde ni punto).
-const PATRON_ANCLA = /\[p[áa]g\.?\s*(\d+)\]/i;
+// Mismo formato de ancla que en media/viewer.js: "[pág. 3]" (con o sin tilde ni
+// punto), o en inglés "[p. 3]" / "[page 3]".
+const PATRON_ANCLA = /\[(?:p[áa]g|page|p)\.?\s*(\d+)\]/i;
 const NOMBRES_ESTADO = { pendiente: 'Pendiente', 'en-progreso': 'En progreso', hecho: 'Hecho' };
+
+const sinTraducir = (texto, ...valores) => texto.replace(/\{(\d+)\}/g, (_, i) => String(valores[Number(i)]));
 
 // El texto resaltado viene del PDF: escapamos lo que Markdown tomaría como formato.
 // Las notas no se escapan: son de la persona y pueden tener Markdown a propósito.
@@ -17,13 +21,14 @@ function escaparMarkdown(texto) {
 
 const unaLinea = (texto) => texto.replace(/\s+/g, ' ').trim();
 
-function formatearFecha(iso) {
+function formatearFecha(iso, t) {
   const fecha = new Date(iso);
   if (Number.isNaN(fecha.getTime())) return null;
-  return fecha.toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' });
+  // La "traducción" de es-AR es el formato de fecha del otro idioma (en-US).
+  return fecha.toLocaleDateString(t('es-AR'), { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-function armarResumen(nombrePdf, practico) {
+function armarResumen(nombrePdf, practico, t = sinTraducir) {
   // Agrupamos todo por página: resaltados y notas ancladas.
   const porPagina = new Map();
   const deLaPagina = (pagina) => {
@@ -42,27 +47,33 @@ function armarResumen(nombrePdf, practico) {
     else notasGenerales.push(texto);
   }
 
-  const lineas = [`# Resumen: ${escaparMarkdown(nombrePdf)}`, ''];
-  lineas.push(`- **Estado:** ${NOMBRES_ESTADO[practico.estado] || NOMBRES_ESTADO.pendiente}`);
-  const fecha = practico.actualizado && formatearFecha(practico.actualizado);
-  if (fecha) lineas.push(`- **Última modificación:** ${fecha}`);
+  const lineas = [t('# Resumen: {0}', escaparMarkdown(nombrePdf)), ''];
+  lineas.push(t('- **Estado:** {0}', t(NOMBRES_ESTADO[practico.estado] || NOMBRES_ESTADO.pendiente)));
+  const fecha = practico.actualizado && formatearFecha(practico.actualizado, t);
+  if (fecha) lineas.push(t('- **Última modificación:** {0}', fecha));
+  if (practico.marcadores && practico.marcadores.length > 0) {
+    lineas.push(t('- **Páginas marcadas:** {0}', practico.marcadores.join(', ')));
+  }
   lineas.push('');
 
   if (notasGenerales.length > 0) {
-    lineas.push('## Notas generales', '', ...notasGenerales.map((n) => `- ${n}`), '');
+    lineas.push(t('## Notas generales'), '', ...notasGenerales.map((n) => `- ${n}`), '');
   }
 
   for (const pagina of [...porPagina.keys()].sort((a, b) => a - b)) {
     const { resaltados, notas } = porPagina.get(pagina);
-    lineas.push(`## Página ${pagina}`, '');
+    lineas.push(t('## Página {0}', pagina), '');
     for (const r of [...resaltados].sort((a, b) => a.inicio - b.inicio)) {
-      lineas.push(`> ${escaparMarkdown(unaLinea(r.texto))} *(${r.color})*`, '');
+      lineas.push(`> ${escaparMarkdown(unaLinea(r.texto))} *(${t(r.color)})*`);
+      // El comentario, como las notas, es de la persona: no se escapa.
+      if (r.comentario && r.comentario.trim()) lineas.push('>', t('> **Comentario:** {0}', unaLinea(r.comentario)));
+      lineas.push('');
     }
     if (notas.length > 0) lineas.push(...notas.map((n) => `- ${n}`), '');
   }
 
   if (notasGenerales.length === 0 && porPagina.size === 0) {
-    lineas.push('*Todavía no hay notas ni resaltados.*', '');
+    lineas.push(t('*Todavía no hay notas ni resaltados.*'), '');
   }
   return lineas.join('\n');
 }

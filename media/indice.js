@@ -1,4 +1,5 @@
 // Índice (marcadores) del PDF y links clickeables dentro de las páginas.
+import { t } from './idioma.js';
 
 // Un "destino" de PDF dice a qué página (y a veces a qué altura) apunta un
 // marcador o un link. Puede venir con nombre ("anexo") o explícito:
@@ -50,7 +51,7 @@ function armarEntrada(entrada, alElegir) {
     const abierta = entrada.count > 0;
     expandir.textContent = abierta ? '▾' : '▸';
     expandir.setAttribute('aria-expanded', String(abierta));
-    expandir.setAttribute('aria-label', `${abierta ? 'Cerrar' : 'Abrir'} “${entrada.title}”`);
+    expandir.setAttribute('aria-label', abierta ? t('Cerrar “{0}”', entrada.title) : t('Abrir “{0}”', entrada.title));
   } else {
     expandir.disabled = true;
     expandir.setAttribute('aria-hidden', 'true');
@@ -76,7 +77,7 @@ function armarEntrada(entrada, alElegir) {
       sublista.hidden = !sublista.hidden;
       expandir.textContent = sublista.hidden ? '▸' : '▾';
       expandir.setAttribute('aria-expanded', String(!sublista.hidden));
-      expandir.setAttribute('aria-label', `${sublista.hidden ? 'Abrir' : 'Cerrar'} “${entrada.title}”`);
+      expandir.setAttribute('aria-label', sublista.hidden ? t('Abrir “{0}”', entrada.title) : t('Cerrar “{0}”', entrada.title));
     });
   }
   return item;
@@ -113,7 +114,7 @@ export async function renderizarLinks(info, callbacks) {
       });
     } else {
       enlace.href = '#';
-      enlace.title = 'Ir a otra parte del documento';
+      enlace.title = t('Ir a otra parte del documento');
       enlace.addEventListener('click', (evento) => {
         evento.preventDefault();
         if (link.dest) callbacks.alLinkInterno(link.dest);

@@ -1,0 +1,8 @@
+{
+  "descripcion": "PDF viewer for VS Code: read, search, highlight, comment, listen aloud and take notes on any PDF.",
+  "vista.documentos": "Documents",
+  "bienvenida.sinCarpeta": "Open a folder with PDFs to see them here.\n[Open Folder](command:vscode.openFolder)",
+  "bienvenida.sinPdfs": "There are no PDF files in the open folder.",
+  "comando.refrescar": "Refresh list",
+  "comando.verNovedades": "What's New"
+}

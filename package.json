@@ -1,8 +1,8 @@
 {
   "name": "visor-de-practicos",
   "displayName": "Visor PDF",
-  "description": "Visor de PDF para VS Code: leé, buscá, resaltá, escuchá en voz alta y tomá notas en cualquier PDF.",
-  "version": "0.5.0",
+  "description": "%descripcion%",
+  "version": "0.6.0",
   "publisher": "JulietaMontenegro",
   "license": "MIT",
   "repository": {
@@ -23,11 +23,14 @@
   ],
   "keywords": [
     "pdf",
+    "viewer",
+    "reader",
+    "highlight",
+    "annotations",
+    "notes",
+    "accessibility",
     "visor",
-    "lector",
-    "resaltar",
-    "notas",
-    "accesibilidad"
+    "resaltar"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
@@ -58,28 +61,33 @@
       "visorPracticos": [
         {
           "id": "visorPracticos.lista",
-          "name": "Documentos"
+          "name": "%vista.documentos%"
         }
       ]
     },
     "viewsWelcome": [
       {
         "view": "visorPracticos.lista",
-        "contents": "Abrí una carpeta con PDFs para verlos acá.\n[Abrir carpeta](command:vscode.openFolder)",
+        "contents": "%bienvenida.sinCarpeta%",
         "when": "workbenchState == empty"
       },
       {
         "view": "visorPracticos.lista",
-        "contents": "No hay archivos PDF en la carpeta abierta.",
+        "contents": "%bienvenida.sinPdfs%",
         "when": "workbenchState != empty"
       }
     ],
     "commands": [
       {
         "command": "visorPracticos.refrescar",
-        "title": "Actualizar lista",
+        "title": "%comando.refrescar%",
         "category": "Visor PDF",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "visorPracticos.verNovedades",
+        "title": "%comando.verNovedades%",
+        "category": "Visor PDF"
       }
     ],
     "menus": {
@@ -107,10 +115,12 @@
   "scripts": {
     "empaquetar": "vsce package",
     "test": "node --test \"test/*.test.js\" \"test/*.test.mjs\"",
+    "e2e": "node --test --test-concurrency=1 \"test/navegador/*.test.js\"",
     "banco": "node test/banco/servidor.js",
     "capturas": "node test/demo/capturar.js"
   },
   "dependencies": {
+    "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.0.0"
   },
   "devDependencies": {

@@ -4,6 +4,7 @@
 // Moodle), solo cambia este módulo: el resto usa leerPractico/actualizarPractico.
 const vscode = require('vscode');
 const path = require('path');
+const { t } = require('./idioma');
 
 const NOMBRE_ARCHIVO = '.practicos.json';
 const VERSION_FORMATO = 1;
@@ -15,7 +16,7 @@ const practicoPorDefecto = () => ({ estado: 'pendiente', notas: '', resaltados: 
 
 // Un resaltado marca un tramo del texto de una página: [inicio, fin) son posiciones
 // dentro de ese texto, y `texto` es lo marcado (sirve para volver a ubicarlo si
-// cambia la forma en que se extrae el texto del PDF).
+// cambia la forma en que se extrae el texto del PDF). `comentario` es opcional.
 function resaltadosValidos(lista) {
   return (
     Array.isArray(lista) &&
@@ -30,10 +31,21 @@ function resaltadosValidos(lista) {
         r.inicio >= 0 &&
         r.fin > r.inicio &&
         COLORES_RESALTADO.includes(r.color) &&
-        typeof r.texto === 'string'
+        typeof r.texto === 'string' &&
+        (r.comentario === undefined || typeof r.comentario === 'string')
     )
   );
 }
+
+const esPagina = (n) => Number.isInteger(n) && n >= 1;
+
+// Páginas marcadas: números de página sin repetir.
+const marcadoresValidos = (lista) =>
+  Array.isArray(lista) && lista.every(esPagina) && new Set(lista).size === lista.length;
+
+// Hasta qué página se llegó leyendo, de cuántas.
+const progresoValido = (p) =>
+  Boolean(p) && esPagina(p.paginaMaxima) && esPagina(p.totalPaginas) && p.paginaMaxima <= p.totalPaginas;
 
 // Errores "esperables" (archivo corrupto, sin permisos, etc.) con un mensaje
 // pensado para mostrarle al usuario tal cual.
@@ -81,7 +93,7 @@ async function leerJson(uriJson) {
   } catch (error) {
     // Que todavía no exista es normal: se crea al guardar el primer dato.
     if (error.code === 'FileNotFound') return { version: VERSION_FORMATO, practicos: {} };
-    throw new ErrorAlmacen(`No se pudo leer ${NOMBRE_ARCHIVO}: ${error.message}`);
+    throw new ErrorAlmacen(t('No se pudo leer {0}: {1}', NOMBRE_ARCHIVO, error.message));
   }
 
   const texto = new TextDecoder().decode(bytes);
@@ -92,17 +104,16 @@ async function leerJson(uriJson) {
     datos = JSON.parse(texto);
   } catch (error) {
     throw new ErrorAlmacen(
-      `${NOMBRE_ARCHIVO} tiene un error de formato (${error.message}). ` +
-        'No se va a modificar hasta que lo corrijas.'
+      t('{0} tiene un error de formato ({1}). No se va a modificar hasta que lo corrijas.', NOMBRE_ARCHIVO, error.message)
     );
   }
 
   if (!datos || typeof datos !== 'object' || Array.isArray(datos)) {
-    throw new ErrorAlmacen(`${NOMBRE_ARCHIVO} no tiene el formato esperado.`);
+    throw new ErrorAlmacen(t('{0} no tiene el formato esperado.', NOMBRE_ARCHIVO));
   }
   if (datos.practicos === undefined) datos.practicos = {};
   if (!datos.practicos || typeof datos.practicos !== 'object' || Array.isArray(datos.practicos)) {
-    throw new ErrorAlmacen(`${NOMBRE_ARCHIVO}: "practicos" no tiene el formato esperado.`);
+    throw new ErrorAlmacen(t('{0}: "practicos" no tiene el formato esperado.', NOMBRE_ARCHIVO));
   }
   return datos;
 }
@@ -113,7 +124,7 @@ async function escribirJson(uriJson, datos) {
   try {
     await vscode.workspace.fs.writeFile(uriJson, new TextEncoder().encode(texto));
   } catch (error) {
-    throw new ErrorAlmacen(`No se pudo guardar ${NOMBRE_ARCHIVO}: ${error.message}`);
+    throw new ErrorAlmacen(t('No se pudo guardar {0}: {1}', NOMBRE_ARCHIVO, error.message));
   }
 }
 
@@ -127,27 +138,31 @@ function leerPractico(uriPdf) {
 }
 
 // Mezcla `cambios` con lo que ya había guardado y lo escribe. Devuelve el resultado.
-function actualizarPractico(uriPdf, cambios) {
+// `marcarActualizado: false` no toca la fecha de última modificación (para datos
+// que cambian solo por leer, como el progreso).
+function actualizarPractico(uriPdf, cambios, { marcarActualizado = true } = {}) {
   if (cambios.estado !== undefined && !ESTADOS.includes(cambios.estado)) {
-    return Promise.reject(new ErrorAlmacen(`Estado inválido: "${cambios.estado}".`));
+    return Promise.reject(new ErrorAlmacen(t('Estado inválido: "{0}".', cambios.estado)));
   }
   if (cambios.notas !== undefined && typeof cambios.notas !== 'string') {
-    return Promise.reject(new ErrorAlmacen('Las notas tienen que ser texto.'));
+    return Promise.reject(new ErrorAlmacen(t('Las notas tienen que ser texto.')));
   }
   if (cambios.resaltados !== undefined && !resaltadosValidos(cambios.resaltados)) {
-    return Promise.reject(new ErrorAlmacen('Los resaltados no tienen el formato esperado.'));
+    return Promise.reject(new ErrorAlmacen(t('Los resaltados no tienen el formato esperado.')));
+  }
+  if (cambios.marcadores !== undefined && !marcadoresValidos(cambios.marcadores)) {
+    return Promise.reject(new ErrorAlmacen(t('Los marcadores no tienen el formato esperado.')));
+  }
+  if (cambios.progreso !== undefined && !progresoValido(cambios.progreso)) {
+    return Promise.reject(new ErrorAlmacen(t('El progreso no tiene el formato esperado.')));
   }
 
   const uriJson = uriDelJson(uriPdf);
   return enCola(uriJson.toString(), async () => {
     const datos = await leerJson(uriJson);
     const clave = claveDelPdf(uriPdf);
-    const practico = {
-      ...practicoPorDefecto(),
-      ...datos.practicos[clave],
-      ...cambios,
-      actualizado: new Date().toISOString()
-    };
+    const practico = { ...practicoPorDefecto(), ...datos.practicos[clave], ...cambios };
+    if (marcarActualizado) practico.actualizado = new Date().toISOString();
     datos.practicos[clave] = practico;
     if (datos.version === undefined) datos.version = VERSION_FORMATO;
     await escribirJson(uriJson, datos);

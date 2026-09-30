@@ -33,8 +33,13 @@ crearArchivo(
   JSON.stringify({
     version: 1,
     practicos: {
-      'TP1.pdf': { estado: 'hecho' },
-      'TP2.pdf': { estado: 'en-progreso', notas: 'dudas en el ej 3' }
+      'TP1.pdf': { estado: 'hecho', progreso: { paginaMaxima: 8, totalPaginas: 8 } },
+      'TP2.pdf': {
+        estado: 'en-progreso',
+        notas: 'dudas en el ej 3',
+        progreso: { paginaMaxima: 12, totalPaginas: 40 },
+        marcadores: [3, 7]
+      }
     }
   })
 );
@@ -98,12 +103,21 @@ test('cada estado tiene su ícono (con versión para tema claro) y descripción'
   assert.equal(nombreIcono(tp1.iconPath), 'hecho');
   assert.equal(path.basename(tp1.iconPath.light.fsPath), 'hecho-claro.png');
   assert.equal(nombreIcono(tp2.iconPath), 'en-progreso');
-  assert.equal(tp2.description, 'En progreso · con notas');
+  assert.equal(tp2.description, 'En progreso · pág. 12/40 · con notas');
   assert.equal(nombreIcono(tp10.iconPath), 'pendiente');
   for (const p of [tp1, tp2, tp10]) {
     assert.ok(fs.existsSync(p.iconPath.dark.fsPath), p.iconPath.dark.fsPath);
     assert.ok(fs.existsSync(p.iconPath.light.fsPath), p.iconPath.light.fsPath);
   }
+});
+
+test('muestra hasta qué página se leyó y las páginas marcadas', async () => {
+  const [tp1, tp2] = (await grupo('Análisis II')).pdfs;
+  assert.match(tp2.tooltip, /Leído hasta la página 12 de 40 \(30 %\)/);
+  assert.match(tp2.tooltip, /Páginas marcadas: 3, 7/);
+  // Un documento hecho no muestra la página en la descripción (sí en el tooltip).
+  assert.equal(tp1.description, 'Hecho');
+  assert.match(tp1.tooltip, /página 8 de 8 \(100 %\)/);
 });
 
 test('encuentra PDFs con extensión en mayúsculas', async () => {

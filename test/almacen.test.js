@@ -70,6 +70,8 @@ test('valida los resaltados', async (t) => {
     ['fin antes que inicio', [{ ...resaltadoValido, fin: 3 }], false],
     ['página 0', [{ ...resaltadoValido, pagina: 0 }], false],
     ['sin texto', [{ ...resaltadoValido, texto: undefined }], false],
+    ['con comentario', [{ ...resaltadoValido, comentario: 'entra en el parcial' }], true],
+    ['comentario que no es texto', [{ ...resaltadoValido, comentario: 42 }], false],
     ['no es una lista', 'hola', false]
   ];
   for (const [nombre, resaltados, esperado] of casos) {
@@ -79,6 +81,38 @@ test('valida los resaltados', async (t) => {
     );
     assert.equal(aceptado, esperado, nombre);
   }
+});
+
+test('valida los marcadores y el progreso', async (t) => {
+  const carpeta = carpetaTemporal(t);
+  const casos = [
+    ['marcadores válidos', { marcadores: [2, 5] }, true],
+    ['marcador repetido', { marcadores: [2, 2] }, false],
+    ['marcador en la página 0', { marcadores: [0] }, false],
+    ['progreso válido', { progreso: { paginaMaxima: 3, totalPaginas: 10 } }, true],
+    ['progreso más allá del total', { progreso: { paginaMaxima: 11, totalPaginas: 10 } }, false],
+    ['progreso sin total', { progreso: { paginaMaxima: 3 } }, false]
+  ];
+  for (const [nombre, cambios, esperado] of casos) {
+    const aceptado = await almacen.actualizarPractico(pdf(carpeta, 'tp1.pdf'), cambios).then(
+      () => true,
+      () => false
+    );
+    assert.equal(aceptado, esperado, nombre);
+  }
+});
+
+test('guardar el progreso no cambia la fecha de última modificación', async (t) => {
+  const carpeta = carpetaTemporal(t);
+  const uri = pdf(carpeta, 'tp1.pdf');
+  const { actualizado } = await almacen.actualizarPractico(uri, { notas: 'x' });
+  const conProgreso = await almacen.actualizarPractico(
+    uri,
+    { progreso: { paginaMaxima: 2, totalPaginas: 5 } },
+    { marcarActualizado: false }
+  );
+  assert.equal(conProgreso.actualizado, actualizado);
+  assert.deepEqual((await almacen.leerPractico(uri)).progreso, { paginaMaxima: 2, totalPaginas: 5 });
 });
 
 test('no sobrescribe un .practicos.json con errores de formato', async (t) => {

@@ -77,7 +77,10 @@ function buscarPdfs(carpeta) {
 function crearVscodeFalso({ demoraMaxima = 0 } = {}) {
   const registro = {
     errores: [], // mensajes de showErrorMessage
+    avisos: [], // mensajes de showInformationMessage
+    respuestaAviso: undefined, // el botón que se "toca" en esos avisos
     comandos: {},
+    comandosEjecutados: [], // [id, ...argumentos] de executeCommand
     vigilantes: [], // FileSystemWatcher creados: { patron, crear, cambiar, borrar }
     proveedorArbol: null,
     proveedorEditor: null,
@@ -108,6 +111,8 @@ function crearVscodeFalso({ demoraMaxima = 0 } = {}) {
       }
     },
     env: {
+      // Idioma de VS Code; el banco lo toma de la variable VISOR_IDIOMA (por ejemplo, "en").
+      language: process.env.VISOR_IDIOMA || 'es',
       openExternal: async (uri) => {
         registro.linksAbiertos.push(uri.toString());
         return true;
@@ -152,6 +157,11 @@ function crearVscodeFalso({ demoraMaxima = 0 } = {}) {
     },
     window: {
       showErrorMessage: (mensaje) => registro.errores.push(mensaje),
+      // Devuelve el botón que "eligió" la persona (registro.respuestaAviso).
+      showInformationMessage: async (mensaje) => {
+        registro.avisos.push(mensaje);
+        return registro.respuestaAviso;
+      },
       createTreeView: (_id, opciones) => {
         registro.proveedorArbol = opciones.treeDataProvider;
         return { dispose() {} };
@@ -174,11 +184,28 @@ function crearVscodeFalso({ demoraMaxima = 0 } = {}) {
       registerCommand: (id, funcion) => {
         registro.comandos[id] = funcion;
         return { dispose() {} };
+      },
+      executeCommand: async (id, ...argumentos) => {
+        registro.comandosEjecutados.push([id, ...argumentos]);
       }
     }
   };
 
   return { vscode, registro };
+}
+
+// El `context` que VS Code le pasa a activate(). `estadoGlobal` es un Map.
+function crearContextoFalso(extensionUri, estadoGlobal = new Map()) {
+  return {
+    extensionUri,
+    extension: { packageJSON: require('../../package.json') },
+    subscriptions: [],
+    globalState: {
+      get: (clave) => estadoGlobal.get(clave),
+      update: async (clave, valor) => estadoGlobal.set(clave, valor),
+      keys: () => [...estadoGlobal.keys()]
+    }
+  };
 }
 
 // Hace que require('vscode') devuelva el simulado. Llamarlo antes de cargar
@@ -191,4 +218,4 @@ function instalarVscodeFalso(vscode) {
   require.cache.vscode = { id: 'vscode', filename: 'vscode', loaded: true, exports: vscode };
 }
 
-module.exports = { UriFalsa, esperar, crearVscodeFalso, instalarVscodeFalso };
+module.exports = { UriFalsa, esperar, crearVscodeFalso, crearContextoFalso, instalarVscodeFalso };

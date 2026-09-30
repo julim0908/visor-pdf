@@ -3,6 +3,7 @@
 const vscode = require('vscode');
 const path = require('path');
 const almacen = require('./almacen');
+const { t } = require('./idioma');
 
 const ID_VISTA = 'visorPracticos.lista';
 const ID_EDITOR = 'visorPracticos.pdfViewer';
@@ -43,28 +44,48 @@ function crearItemPdf(uriPdf, practico, carpetaIconos) {
   item.contextValue = 'pdf';
   item.command = {
     command: 'vscode.openWith',
-    title: 'Abrir en Visor PDF',
+    title: t('Abrir en Visor PDF'),
     arguments: [uriPdf, ID_EDITOR]
   };
 
   if (!practico) {
     // No se pudo leer el .practicos.json de esa carpeta.
     item.iconPath = new vscode.ThemeIcon('question');
-    item.tooltip = `${nombre}\nNo se pudieron leer los datos de este documento.`;
+    item.tooltip = `${nombre}\n${t('No se pudieron leer los datos de este documento.')}`;
     return item;
   }
 
   const presentacion = PRESENTACION_ESTADO[practico.estado] || PRESENTACION_ESTADO.pendiente;
+  const etiqueta = t(presentacion.etiqueta);
   item.iconPath = {
     light: vscode.Uri.joinPath(carpetaIconos, `${presentacion.icono}-claro.png`),
     dark: vscode.Uri.joinPath(carpetaIconos, `${presentacion.icono}.png`)
   };
 
   const notas = (practico.notas || '').trim();
-  item.description = notas ? `${presentacion.etiqueta} · con notas` : presentacion.etiqueta;
+  const { progreso } = practico;
+  // Un documento terminado no necesita mostrar por qué página va.
+  const mostrarProgreso = progreso && practico.estado !== 'hecho';
+  item.description = [
+    etiqueta,
+    mostrarProgreso ? t('pág. {0}/{1}', progreso.paginaMaxima, progreso.totalPaginas) : null,
+    notas ? t('con notas') : null
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   // Tooltip como texto plano (no Markdown): las notas se muestran tal cual.
+  const lineas = [nombre, t('Estado: {0}', etiqueta)];
+  if (progreso) {
+    const porcentaje = Math.round((progreso.paginaMaxima / progreso.totalPaginas) * 100);
+    lineas.push(t('Leído hasta la página {0} de {1} ({2} %)', progreso.paginaMaxima, progreso.totalPaginas, porcentaje));
+  }
+  if (practico.marcadores && practico.marcadores.length > 0) {
+    lineas.push(t('Páginas marcadas: {0}', practico.marcadores.join(', ')));
+  }
   const vistaPrevia = notas.length > 300 ? `${notas.slice(0, 300)}…` : notas;
-  item.tooltip = `${nombre}\nEstado: ${presentacion.etiqueta}${vistaPrevia ? `\n\n${vistaPrevia}` : ''}`;
+  if (vistaPrevia) lineas.push('', vistaPrevia);
+  item.tooltip = lineas.join('\n');
   return item;
 }
 
@@ -99,7 +120,7 @@ class ProveedorArbolPracticos {
       return await this.construirGrupos();
     } catch (error) {
       this.busquedaPdfs = null;
-      vscode.window.showErrorMessage(`No se pudo armar la lista de PDFs: ${error.message}`);
+      vscode.window.showErrorMessage(t('No se pudo armar la lista de PDFs: {0}', error.message));
       return [];
     }
   }
@@ -150,12 +171,12 @@ class ProveedorArbolPracticos {
 
     if (error) {
       grupo.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('problemsWarningIcon.foreground'));
-      grupo.description = `error en ${almacen.NOMBRE_ARCHIVO}`;
+      grupo.description = t('error en {0}', almacen.NOMBRE_ARCHIVO);
       grupo.tooltip = error.message;
     } else {
       const hechos = [...practicos.values()].filter((p) => p.estado === 'hecho').length;
       grupo.iconPath = vscode.ThemeIcon.Folder;
-      grupo.description = `${hechos}/${pdfs.length} hechos`;
+      grupo.description = t('{0}/{1} hechos', hechos, pdfs.length);
       grupo.tooltip = uriCarpeta.fsPath;
     }
     return grupo;

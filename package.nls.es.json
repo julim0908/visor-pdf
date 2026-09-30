@@ -1,0 +1,8 @@
+{
+  "descripcion": "Visor de PDF para VS Code: leé, buscá, resaltá, comentá, escuchá en voz alta y tomá notas en cualquier PDF.",
+  "vista.documentos": "Documentos",
+  "bienvenida.sinCarpeta": "Abrí una carpeta con PDFs para verlos acá.\n[Abrir carpeta](command:vscode.openFolder)",
+  "bienvenida.sinPdfs": "No hay archivos PDF en la carpeta abierta.",
+  "comando.refrescar": "Actualizar lista",
+  "comando.verNovedades": "Ver novedades"
+}

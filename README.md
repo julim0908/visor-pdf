@@ -10,6 +10,12 @@ voz alta y tomá notas al lado, sin salir del editor.
 Está pensado para que leer sea cómodo para todas las personas, con opciones como
 color de papel, guía de lectura y lectura en voz alta.
 
+> **English:** a full PDF viewer inside VS Code. Read, search, highlight in four
+> styles, comment on your highlights, bookmark pages, listen aloud, use a reading
+> guide or dark paper, and take notes anchored to pages. Export a summary or a
+> copy of the PDF with your highlights. The interface follows VS Code's
+> language: Spanish or English. Press `?` in the viewer to see every shortcut.
+
 ![Recorrido de Visor PDF: resaltar, cambiar el color de papel, escuchar el texto, usar la guía de lectura y tomar notas](docs/imagenes/recorrido.gif)
 
 ## Capturas
@@ -30,6 +36,11 @@ color de papel, guía de lectura y lectura en voz alta.
   a la izquierda para saltar entre secciones. Los links del PDF se pueden
   clickear (los externos se abren en el navegador, con la confirmación de VS
   Code). Después de un salto aparece *← Volver* (también `Alt+←`).
+- **Miniaturas**: el botón *Páginas* muestra una imagen chiquita de cada página
+  para saltar rápido, sobre todo en PDFs sin índice.
+- **Páginas marcadas**: el señalador de la barra (o la tecla `M`) marca la página
+  que estás viendo, como un señalador de papel. Las páginas marcadas aparecen
+  en el panel de notas para volver con un click.
 - **Seleccionar y copiar texto**, como en cualquier lector.
 - **Buscar** con `Ctrl+F` (o el campo de la barra): no distingue mayúsculas ni
   tildes, así que "pagina" encuentra "Página". `Enter` va a la siguiente
@@ -37,10 +48,11 @@ color de papel, guía de lectura y lectura en voz alta.
   Los PDFs escaneados son imágenes, así que no tienen texto para buscar ni copiar.
 - **Atajos**: apretá `?` (o el botón del teclado en la barra) para verlos todos.
   Los principales: `RePág` / `AvPág` cambian de página, `+` / `−` el zoom,
-  `Ctrl+F` busca, `Alt+←` vuelve después de seguir un link y `Ctrl+Z` deshace.
+  `M` marca la página, `Ctrl+F` busca, `Alt+←` vuelve después de seguir un link
+  y `Ctrl+Z` deshace.
   Con texto seleccionado: `1`–`4` resaltan, `R` resalta con el color elegido,
-  `N` lo pasa a las notas, `L` lo lee y `Supr` quita el resaltado (cada botón
-  del menú muestra su tecla).
+  `C` lo comenta, `N` lo pasa a las notas, `L` lo lee y `Supr` quita el
+  resaltado (cada botón del menú muestra su tecla).
 
 ### Resaltar y tomar notas
 
@@ -49,6 +61,12 @@ color de papel, guía de lectura y lectura en voz alta.
   sin depender del color: amarillo es fondo, verde subrayado, rosa doble
   subrayado y celeste subrayado punteado. *A notas* copia el texto a tus notas,
   anclado a su página. Todos quedan listados en el panel de notas.
+  - *Comentarios*: con un click sobre un resaltado (o con texto seleccionado),
+    **Comentar** (`C`) abre un cuadro para escribir qué significa para vos
+    ("esto entra en el parcial"). `Enter` guarda y `Esc` cancela. Los
+    resaltados con comentario llevan un puntito naranja y lo muestran al pasar
+    el mouse; también aparece en la lista del panel de notas y en el resumen
+    exportado.
   - *Quitar resaltados*: con un click sobre un resaltado le cambiás el color o
     lo quitás entero con **Quitar resaltado** (o `Supr`). Si seleccionás solo
     una parte de algo resaltado, ese botón quita solo esa parte. En la lista del
@@ -68,7 +86,11 @@ color de papel, guía de lectura y lectura en voz alta.
   página que estás viendo, y en *Notas por página* hacés click para saltar ahí
   o la borrás con su **×**.
 - **Exportar resumen**: al final del panel de notas, guarda un archivo Markdown
-  con tus notas y resaltados ordenados por página, para repasar o compartir.
+  con tus notas, resaltados, comentarios y páginas marcadas, ordenados por
+  página, para repasar o compartir.
+- **PDF con resaltados**: guarda una copia del PDF con tus resaltados como
+  anotaciones de verdad, así se ven en cualquier lector (Acrobat, Edge, Chrome,
+  Firefox) y los comentarios aparecen como notas del PDF. El original no se toca.
 
 ### Leer con comodidad
 
@@ -81,7 +103,8 @@ color de papel, guía de lectura y lectura en voz alta.
 - **Opciones de lectura** (botón **Aa**), útiles por ejemplo con dislexia, TDAH,
   baja visión o cansancio visual. Valen para todos tus PDFs:
   - *Color de papel*: crema, durazno, celeste, verde o gris en lugar de blanco.
-    El texto conserva todo su contraste.
+    El texto conserva todo su contraste. Y *Oscuro*, para leer de noche: la
+    página se ve gris oscura con el texto claro.
   - *Guía de lectura*: una franja que sigue al mouse y oscurece el resto de la
     página para no perder el renglón. Con las flechas `↑` `↓` avanza renglón por
     renglón.
@@ -93,8 +116,12 @@ color de papel, guía de lectura y lectura en voz alta.
   terminaste. En el explorador de VS Code y en la pestaña del PDF aparece una
   marca al lado del nombre: ✓ verde si está hecho y ◐ amarilla si está en progreso.
 - **Vista lateral**: el ícono de la barra de la izquierda muestra todos los PDFs
-  de la carpeta abierta, agrupados por carpeta, con el estado de cada uno y
-  cuántos llevás terminados.
+  de la carpeta abierta, agrupados por carpeta, con el estado de cada uno, hasta
+  qué página llegaste leyendo (por ejemplo, *pág. 12/40*) y cuántos llevás
+  terminados.
+- **Idioma**: el visor se ve en español o en inglés, según el idioma de VS Code.
+- **Novedades**: después de cada actualización, un cartel cuenta qué hay de
+  nuevo. La lista completa se abre con el comando *Visor PDF: Ver novedades*.
 
 ## Instalación
 
@@ -110,7 +137,7 @@ En VS Code, abrí la vista de extensiones (`Ctrl+Shift+X`), buscá
 También desde una terminal:
 
 ```
-code --install-extension visor-de-practicos-0.4.1.vsix
+code --install-extension visor-de-practicos-0.6.0.vsix
 ```
 
 ## Dónde se guardan tus datos
@@ -129,8 +156,10 @@ en el explorador de VS Code; si querés verlo, en la configuración buscá
       "estado": "en-progreso",
       "notas": "[pág. 3] revisar las conclusiones",
       "resaltados": [
-        { "id": "r-…", "pagina": 3, "inicio": 47, "fin": 67, "color": "amarillo", "texto": "resultados principales", "creado": "…" }
+        { "id": "r-…", "pagina": 3, "inicio": 47, "fin": 67, "color": "amarillo", "texto": "resultados principales", "comentario": "entra en el parcial", "creado": "…" }
       ],
+      "marcadores": [3, 8],
+      "progreso": { "paginaMaxima": 5, "totalPaginas": 12 },
       "actualizado": "2026-09-28T15:24:06.811Z"
     }
   }
@@ -158,6 +187,7 @@ Hace falta [Node.js](https://nodejs.org) 22 o más nuevo.
 ```
 npm install        # instala pdf.js y la herramienta para empaquetar
 npm test           # corre las pruebas automáticas (no abre VS Code)
+npm run e2e        # prueba el visor en Chrome o Edge con mouse y teclado reales
 npm run banco      # abre el visor en el navegador: http://localhost:5757
 npm run empaquetar # genera el .vsix para compartir
 npm run capturas   # regenera las imágenes de docs/imagenes (capturas, GIF y portada)
@@ -168,9 +198,12 @@ Para probar dentro de VS Code, abrí esta carpeta y apretá `F5`.
 - `extension.js`: registra el visor y maneja lo que pide (leer el PDF, guardar datos).
 - `src/`: código de la extensión (Node). `almacen.js` es el único que lee y
   escribe `.practicos.json`, y `plantilla.js` arma el HTML del visor.
+- `l10n/en.json`: los textos en inglés. En el código los textos van en español
+  dentro de `t('…')`, y `npm test` avisa si alguno no tiene traducción.
 - `media/`: el visor que corre dentro de VS Code (HTML/CSS/JS del navegador).
 - `test/`: pruebas automáticas, el `vscode` simulado y el banco de pruebas.
 
 ## Licencia
 
-MIT. Incluye [PDF.js](https://github.com/mozilla/pdf.js) (Apache 2.0).
+MIT. Incluye [PDF.js](https://github.com/mozilla/pdf.js) (Apache 2.0) y
+[pdf-lib](https://github.com/Hopding/pdf-lib) (MIT).

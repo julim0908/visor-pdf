@@ -6,6 +6,10 @@ import { marcarEnCapa } from './marcas.js';
 import { crearLectura } from './lectura.js';
 import { crearResaltador } from './resaltador.js';
 import { crearHistorial } from './historial.js';
+import { crearMarcadores } from './marcadores.js';
+import { crearMiniaturas } from './miniaturas.js';
+import { cuadrosDeTramo } from './geometria.js';
+import { t } from './idioma.js';
 import { resolverDestino, armarIndice, renderizarLinks } from './indice.js';
 import { crearLector, hayVoz } from './voz.js';
 import { crearMenuDesplegable } from './menus.js';
@@ -51,7 +55,10 @@ const panelIndice = document.getElementById('panel-indice');
 const listaIndice = document.getElementById('lista-indice');
 const botonVolver = document.getElementById('boton-volver');
 const botonExportar = document.getElementById('boton-exportar');
+const botonExportarPdf = document.getElementById('boton-exportar-pdf');
 const botonAtajos = document.getElementById('boton-atajos');
+const botonMiniaturas = document.getElementById('boton-miniaturas');
+const panelMiniaturas = document.getElementById('panel-miniaturas');
 const panelAtajos = document.getElementById('panel-atajos');
 
 const PASOS_ZOOM = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
@@ -67,6 +74,7 @@ const estado = {
   pdfjsLib: null,
   documentoPdf: null,
   panelIndiceVisible: false,
+  panelMiniaturasVisible: false,
   // Lugares desde donde se saltó con un link o el índice, para el botón "Volver".
   historial: [],
   // Por página: { pagina, anchoBase, altoBase, wrapper, canvas, renderizada, tareaRender,
@@ -120,6 +128,22 @@ const resaltador = crearResaltador({
   leerTramos: (tramos) => leerEnVozAlta(tramos),
   // Si ya resaltó algo, el consejo de cómo resaltar no hace más falta.
   alResaltar: () => cerrarConsejo()
+});
+
+const marcadores = crearMarcadores({
+  paginas: () => estado.paginas,
+  paginaActual: () => estado.paginaActual,
+  irAPagina: (numero) => irAPagina(numero),
+  historial: acciones,
+  enviar: (mensaje) => vscode.postMessage(mensaje),
+  alCambiar: () => miniaturas.actualizar()
+});
+
+const miniaturas = crearMiniaturas({
+  paginas: () => estado.paginas,
+  paginaActual: () => estado.paginaActual,
+  irAPagina: (numero) => irAPagina(numero),
+  marcadas: () => marcadores.marcadas()
 });
 
 // ---------- Lectura en voz alta ----------
@@ -187,6 +211,7 @@ async function iniciar() {
         if (mensaje.inicial) {
           cargarNotas(mensaje.practico);
           resaltador.cargar(mensaje.practico ? mensaje.practico.resaltados : [], Boolean(mensaje.practico));
+          marcadores.cargar(mensaje.practico);
         }
       } else if (mensaje.tipo === 'notas-guardadas') {
         confirmarGuardadoNotas(mensaje.revision, true);
@@ -208,7 +233,7 @@ async function iniciar() {
     // Avisamos a la extensión que ya podemos recibir el PDF.
     vscode.postMessage({ tipo: 'listo' });
   } catch (error) {
-    mostrarError(`No se pudo inicializar el visor: ${error.message}`);
+    mostrarError(t('No se pudo inicializar el visor: {0}', error.message));
   }
 }
 
@@ -221,7 +246,7 @@ async function cargarPdf(pdfjsLib, datosPdf, vistaGuardada) {
     estado.documentoPdf = documentoPdf;
     await construirPaginas(documentoPdf);
   } catch (error) {
-    mostrarError(`No se pudo abrir el PDF: ${error.message}`);
+    mostrarError(t('No se pudo abrir el PDF: {0}', error.message));
     return;
   }
 
@@ -230,9 +255,11 @@ async function cargarPdf(pdfjsLib, datosPdf, vistaGuardada) {
   if (entradasIndice && entradasIndice.length > 0) {
     armarIndice(listaIndice, entradasIndice, irAEntradaIndice);
     botonIndice.disabled = false;
-    botonIndice.title = 'Mostrar u ocultar el índice';
+    botonIndice.title = t('Mostrar u ocultar el índice');
     mostrarPanelIndice(Boolean(vistaGuardada && vistaGuardada.panelIndice));
   }
+  botonMiniaturas.disabled = false;
+  if (vistaGuardada && vistaGuardada.panelMiniaturas) mostrarPanelMiniaturas(true);
 
   if (vistaGuardada && vistaGuardada.modoZoom === 'manual') {
     estado.modoZoom = 'manual';
@@ -244,6 +271,7 @@ async function cargarPdf(pdfjsLib, datosPdf, vistaGuardada) {
 
   habilitarBarra();
   aplicarZoom();
+  marcadores.mostrar();
   irAPagina((vistaGuardada && vistaGuardada.pagina) || 1);
   mostrarConsejoSiCorresponde();
 }
@@ -509,9 +537,11 @@ function actualizarPaginaActualSegunScroll() {
 
 function establecerPaginaActual(numero) {
   estado.paginaActual = numero;
-  botonAnclar.textContent = `Anclar a pág. ${numero}`;
+  botonAnclar.textContent = t('Anclar a pág. {0}', numero);
   botonPaginaAnterior.disabled = numero <= 1;
   botonPaginaSiguiente.disabled = numero >= estado.paginas.length;
+  marcadores.alCambiarPagina(numero);
+  miniaturas.actualizar();
   guardarVista();
 }
 
@@ -522,7 +552,8 @@ function guardarVista() {
     zoom: estado.modoZoom === 'manual' ? estado.zoom : null,
     pagina: estado.paginaActual,
     panelNotas: estado.panelNotasVisible,
-    panelIndice: estado.panelIndiceVisible
+    panelIndice: estado.panelIndiceVisible,
+    panelMiniaturas: estado.panelMiniaturasVisible
   };
   const serializada = JSON.stringify(vista);
   if (serializada === estado.ultimaVistaEnviada) return;
@@ -542,11 +573,11 @@ function mostrarDatosPractico(practico) {
   }
   const elegido = botonesEstado.find((b) => b.dataset.estado === actual) || botonesEstado[0];
   iconoEstadoActual.replaceChildren(...[...elegido.querySelectorAll('img')].map((img) => img.cloneNode()));
-  textoEstadoActual.textContent = practico ? elegido.querySelector('.nombre-estado').textContent : 'Sin datos';
+  textoEstadoActual.textContent = practico ? elegido.querySelector('.nombre-estado').textContent : t('Sin datos');
   botonEstado.disabled = !practico;
   botonEstado.title = practico
-    ? `Estado del documento: ${textoEstadoActual.textContent}`
-    : 'No se pudieron leer los datos de este documento';
+    ? t('Estado del documento: {0}', textoEstadoActual.textContent)
+    : t('No se pudieron leer los datos de este documento');
 }
 
 function cambiarEstadoPractico(estadoNuevo, { registrar = true } = {}) {
@@ -558,7 +589,7 @@ function cambiarEstadoPractico(estadoNuevo, { registrar = true } = {}) {
   if (registrar && anterior && anterior.dataset.estado !== estadoNuevo) {
     const estadoAnterior = anterior.dataset.estado;
     acciones.registrar({
-      descripcion: 'cambio de estado',
+      descripcion: t('cambio de estado'),
       deshacer: () => cambiarEstadoPractico(estadoAnterior, { registrar: false }),
       rehacer: () => cambiarEstadoPractico(estadoNuevo, { registrar: false })
     });
@@ -579,18 +610,19 @@ function mostrarAvisoAccion(texto) {
 
 function deshacer() {
   const accion = acciones.deshacer();
-  mostrarAvisoAccion(accion ? `Deshecho: ${accion.descripcion}` : 'No hay nada para deshacer');
+  mostrarAvisoAccion(accion ? t('Deshecho: {0}', accion.descripcion) : t('No hay nada para deshacer'));
 }
 
 function rehacer() {
   const accion = acciones.rehacer();
-  mostrarAvisoAccion(accion ? `Rehecho: ${accion.descripcion}` : 'No hay nada para rehacer');
+  mostrarAvisoAccion(accion ? t('Rehecho: {0}', accion.descripcion) : t('No hay nada para rehacer'));
 }
 
 // Dentro de VS Code, Ctrl+Z a veces no llega como tecla: el editor la intercepta y
 // le pide al webview document.execCommand('undo'). Atendemos las dos vías, y como
-// a veces llegan ambas por la misma pulsación, ignoramos la segunda si es inmediata.
-let ultimoDeshacer = { tipo: null, hora: 0 };
+// a veces llegan ambas por la misma pulsación, ignoramos el execCommand que llega
+// justo después de la tecla. (Dos teclas seguidas, en cambio, deshacen dos veces.)
+const horaUltimaTecla = { undo: 0, redo: 0 };
 
 // Campos con su propio deshacer (búsqueda, número de página): ahí no nos metemos.
 // Las notas no cuentan: usan el historial general.
@@ -600,10 +632,10 @@ const tieneDeshacerPropio = (elemento) =>
   (elemento.matches('textarea, input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=button])') ||
     elemento.isContentEditable);
 
-function atenderDeshacer(tipo) {
+function atenderDeshacer(tipo, { desdeTecla = false } = {}) {
   const ahora = Date.now();
-  if (ultimoDeshacer.tipo === tipo && ahora - ultimoDeshacer.hora < 150) return;
-  ultimoDeshacer = { tipo, hora: ahora };
+  if (desdeTecla) horaUltimaTecla[tipo] = ahora;
+  else if (ahora - horaUltimaTecla[tipo] < 300) return;
   if (tipo === 'undo') deshacer();
   else rehacer();
 }
@@ -619,7 +651,7 @@ function configurarDeshacer() {
       if (!esDeshacer && !esRehacer) return;
       if (tieneDeshacerPropio(evento.target)) return;
       evento.preventDefault();
-      atenderDeshacer(esDeshacer ? 'undo' : 'redo');
+      atenderDeshacer(esDeshacer ? 'undo' : 'redo', { desdeTecla: true });
     },
     true
   );
@@ -638,7 +670,8 @@ function configurarDeshacer() {
 // ---------- Notas ----------
 
 // Una línea de las notas que contiene "[pág. N]" queda anclada a esa página.
-const PATRON_ANCLA = /\[p[áa]g\.?\s*(\d+)\]/i;
+// También en inglés: "[p. N]" o "[page N]" (el botón Anclar escribe la forma del idioma de VS Code).
+const PATRON_ANCLA = /\[(?:p[áa]g|page|p)\.?\s*(\d+)\]/i;
 
 function quitarAncla(linea) {
   return linea.replace(PATRON_ANCLA, ' ').replace(/\s+/g, ' ').trim();
@@ -656,10 +689,11 @@ function cargarNotas(practico) {
   campoNotas.disabled = !practico;
   botonAnclar.disabled = !practico;
   botonExportar.disabled = !practico;
+  botonExportarPdf.disabled = !practico;
   campoNotas.value = practico ? practico.notas || '' : '';
   campoNotas.placeholder = practico
-    ? 'Escribí tus notas acá…'
-    : 'No se pudieron leer los datos de este documento.';
+    ? t('Escribí tus notas acá…')
+    : t('No se pudieron leer los datos de este documento.');
   mostrarEstadoGuardado('');
   actualizarListaAnclas();
 }
@@ -668,7 +702,7 @@ function alEditarNotas() {
   estado.revisionNotas++;
   // Mandamos cada cambio; la extensión espera 800 ms sin cambios antes de escribir.
   vscode.postMessage({ tipo: 'editar-notas', notas: campoNotas.value, revision: estado.revisionNotas });
-  mostrarEstadoGuardado('Sin guardar…');
+  mostrarEstadoGuardado(t('Sin guardar…'));
   actualizarListaAnclas();
 }
 
@@ -728,7 +762,7 @@ function registrarEscritura(evento) {
     return;
   }
   const accion = {
-    descripcion: borrando ? 'borrado en las notas' : 'escritura en las notas',
+    descripcion: borrando ? t('borrado en las notas') : t('escritura en las notas'),
     borrando,
     hora: ahora,
     antes: fotoNotas(),
@@ -751,7 +785,7 @@ function agregarLineasANotas(lineas) {
     mostrarPanelNotas(true);
     guardarVista();
   }
-  modificarNotas('texto pasado a las notas', () => {
+  modificarNotas(t('texto pasado a las notas'), () => {
     const texto = campoNotas.value;
     const separador = texto === '' || texto.endsWith('\n') ? '' : '\n';
     campoNotas.value = `${texto}${separador}${lineas.join('\n')}`;
@@ -762,7 +796,7 @@ function agregarLineasANotas(lineas) {
 
 // Borra una línea de las notas (la de índice `numeroLinea`).
 function borrarLineaDeNotas(numeroLinea) {
-  modificarNotas('nota borrada', () => {
+  modificarNotas(t('nota borrada'), () => {
     const lineas = campoNotas.value.split('\n');
     lineas.splice(numeroLinea, 1);
     const inicio = lineas.slice(0, numeroLinea).join('\n').length;
@@ -774,7 +808,7 @@ function borrarLineaDeNotas(numeroLinea) {
 function confirmarGuardadoNotas(revision, guardadoOk) {
   // Si se siguió escribiendo después de esa revisión, todavía falta otro guardado.
   if (revision !== estado.revisionNotas) return;
-  mostrarEstadoGuardado(guardadoOk ? 'Guardado' : 'No se pudo guardar', !guardadoOk);
+  mostrarEstadoGuardado(guardadoOk ? t('Guardado') : t('No se pudo guardar'), !guardadoOk);
 }
 
 function mostrarEstadoGuardado(texto, esError = false) {
@@ -792,8 +826,8 @@ function anclarLineaActual() {
   const finLinea = saltoSiguiente === -1 ? texto.length : saltoSiguiente;
 
   const lineaSinAncla = quitarAncla(texto.slice(inicioLinea, finLinea));
-  modificarNotas(`nota anclada a la pág. ${estado.paginaActual}`, () => {
-    campoNotas.setRangeText(`[pág. ${estado.paginaActual}] ${lineaSinAncla}`, inicioLinea, finLinea, 'end');
+  modificarNotas(t('nota anclada a la pág. {0}', estado.paginaActual), () => {
+    campoNotas.setRangeText(`${t('[pág. {0}]', estado.paginaActual)} ${lineaSinAncla}`, inicioLinea, finLinea, 'end');
   });
   campoNotas.focus();
 }
@@ -810,23 +844,23 @@ function actualizarListaAnclas() {
 
     const etiqueta = document.createElement('span');
     etiqueta.className = 'pagina-ancla';
-    etiqueta.textContent = `pág. ${pagina}`;
+    etiqueta.textContent = t('pág. {0}', pagina);
 
     const resumen = document.createElement('span');
     resumen.className = 'texto-ancla';
-    resumen.textContent = quitarAncla(linea) || '(sin texto)';
+    resumen.textContent = quitarAncla(linea) || t('(sin texto)');
 
     const boton = document.createElement('button');
     boton.className = 'ancla';
-    boton.title = `Ir a la página ${pagina}`;
+    boton.title = t('Ir a la página {0}', pagina);
     boton.append(etiqueta, resumen);
     boton.addEventListener('click', () => irAPagina(pagina));
 
     const botonBorrar = document.createElement('button');
     botonBorrar.className = 'quitar-item';
     botonBorrar.textContent = '×';
-    botonBorrar.title = 'Borrar esta nota (se puede deshacer con Ctrl+Z)';
-    botonBorrar.setAttribute('aria-label', `Borrar la nota de la página ${pagina}: ${resumen.textContent}`);
+    botonBorrar.title = t('Borrar esta nota (se puede deshacer con Ctrl+Z)');
+    botonBorrar.setAttribute('aria-label', t('Borrar la nota de la página {0}: {1}', pagina, resumen.textContent));
     botonBorrar.disabled = campoNotas.disabled;
     botonBorrar.addEventListener('click', () => borrarLineaDeNotas(numeroLinea));
 
@@ -861,7 +895,7 @@ async function buscar(texto) {
     return;
   }
 
-  mostrarResultadoBusqueda('Buscando…');
+  mostrarResultadoBusqueda(t('Buscando…'));
   const coincidencias = [];
   let caracteresTotales = 0;
   // La primera búsqueda tiene que leer el texto de todas las páginas;
@@ -892,7 +926,7 @@ async function buscar(texto) {
     busqueda.indiceActual = -1;
     marcarTodas();
     // Los PDFs escaneados son imágenes: no tienen texto para buscar ni copiar.
-    mostrarResultadoBusqueda(caracteresTotales === 0 ? 'Este PDF no tiene texto' : 'Sin resultados', true);
+    mostrarResultadoBusqueda(caracteresTotales === 0 ? t('Este PDF no tiene texto') : t('Sin resultados'), true);
     actualizarBotonesBusqueda();
     return;
   }
@@ -923,7 +957,7 @@ function moverCoincidencia(paso) {
 
 function irACoincidenciaActual() {
   const total = busqueda.coincidencias.length;
-  mostrarResultadoBusqueda(`${busqueda.indiceActual + 1} de ${total}`);
+  mostrarResultadoBusqueda(t('{0} de {1}', busqueda.indiceActual + 1, total));
   actualizarBotonesBusqueda();
   marcarTodas();
   irAMarca(busqueda.coincidencias[busqueda.indiceActual].pagina, '.coincidencia.actual');
@@ -1122,11 +1156,25 @@ function configurarSeleccion() {
 
 // ---------- Índice, links y "Volver" ----------
 
+// El índice y las miniaturas comparten el costado izquierdo: abrir uno cierra el otro.
 function mostrarPanelIndice(visible) {
   estado.panelIndiceVisible = visible;
   panelIndice.classList.toggle('oculto', !visible);
   botonIndice.classList.toggle('activo', visible);
   botonIndice.setAttribute('aria-pressed', String(visible));
+  if (visible && estado.panelMiniaturasVisible) mostrarPanelMiniaturas(false);
+}
+
+function mostrarPanelMiniaturas(visible) {
+  estado.panelMiniaturasVisible = visible;
+  panelMiniaturas.classList.toggle('oculto', !visible);
+  botonMiniaturas.classList.toggle('activo', visible);
+  botonMiniaturas.setAttribute('aria-pressed', String(visible));
+  if (visible && estado.panelIndiceVisible) mostrarPanelIndice(false);
+  if (visible) {
+    miniaturas.construir();
+    miniaturas.actualizar();
+  }
 }
 
 async function irAEntradaIndice(entrada) {
@@ -1202,12 +1250,16 @@ function volver() {
 function actualizarBotonVolver() {
   const anterior = estado.historial[estado.historial.length - 1];
   botonVolver.classList.toggle('oculto', !anterior);
-  if (anterior) botonVolver.textContent = `← Volver a la pág. ${anterior.pagina}`;
+  if (anterior) botonVolver.textContent = t('← Volver a la pág. {0}', anterior.pagina);
 }
 
 function configurarIndice() {
   botonIndice.addEventListener('click', () => {
     mostrarPanelIndice(!estado.panelIndiceVisible);
+    guardarVista();
+  });
+  botonMiniaturas.addEventListener('click', () => {
+    mostrarPanelMiniaturas(!estado.panelMiniaturasVisible);
     guardarVista();
   });
   botonVolver.addEventListener('click', volver);
@@ -1218,6 +1270,50 @@ function configurarIndice() {
     }
   });
   botonExportar.addEventListener('click', () => vscode.postMessage({ tipo: 'exportar-resumen' }));
+  botonExportarPdf.addEventListener('click', exportarPdfConResaltados);
+}
+
+// ---------- Exportar un PDF con los resaltados ----------
+
+// El visor calcula dónde está cada resaltado en la página (con los mismos datos
+// del texto que usa la capa de selección) y la extensión escribe el PDF.
+async function exportarPdfConResaltados() {
+  const resaltados = resaltador.visibles();
+  if (resaltados.length === 0) {
+    mostrarAvisoAccion(t('Todavía no hay resaltados para exportar'));
+    return;
+  }
+  botonExportarPdf.disabled = true;
+  try {
+    const contexto = document.createElement('canvas').getContext('2d');
+    const medir = (texto, familia) => {
+      contexto.font = `100px ${familia}`;
+      return contexto.measureText(texto).width;
+    };
+    const conCuadros = [];
+    for (const r of resaltados) {
+      const info = estado.paginas[r.pagina - 1];
+      if (!info) continue;
+      const texto = await obtenerTextoPagina(info);
+      const pagina = {
+        items: texto.contenido.items.filter((item) => item.str !== undefined),
+        inicios: texto.inicios,
+        estilos: texto.contenido.styles
+      };
+      conCuadros.push({
+        pagina: r.pagina,
+        color: r.color,
+        texto: r.texto,
+        comentario: r.comentario,
+        cuadros: cuadrosDeTramo(pagina, r.inicio, r.fin, medir)
+      });
+    }
+    vscode.postMessage({ tipo: 'exportar-pdf', resaltados: conCuadros });
+  } catch (error) {
+    mostrarAvisoAccion(t('No se pudo preparar el PDF: {0}', error.message));
+  } finally {
+    botonExportarPdf.disabled = false;
+  }
 }
 
 // ---------- Lectura en voz alta (interfaz) ----------
@@ -1260,9 +1356,9 @@ function mostrarEstadoLectura(estadoLector) {
   botonLeer.dataset.estado = estadoLector;
   botonLeer.classList.toggle('activo', estadoLector !== 'detenido');
   const textos = {
-    detenido: ['Leer', 'Leer en voz alta (si hay texto seleccionado, lee solo eso)'],
-    leyendo: ['Pausar', 'Pausar la lectura'],
-    pausado: ['Seguir', 'Seguir leyendo']
+    detenido: [t('Leer'), t('Leer en voz alta (si hay texto seleccionado, lee solo eso)')],
+    leyendo: [t('Pausar'), t('Pausar la lectura')],
+    pausado: [t('Seguir'), t('Seguir leyendo')]
   }[estadoLector];
   botonLeer.querySelector('.etiqueta').textContent = textos[0];
   botonLeer.title = textos[1];
@@ -1299,10 +1395,10 @@ function habilitarBarra() {
   botonAjustarAncho.disabled = false;
   campoPagina.disabled = false;
   campoPagina.max = String(estado.paginas.length);
-  etiquetaTotalPaginas.textContent = `de ${estado.paginas.length}`;
+  etiquetaTotalPaginas.textContent = t('de {0}', estado.paginas.length);
   campoBusqueda.disabled = false;
   botonLeer.disabled = !hayVoz();
-  if (!hayVoz()) botonLeer.title = 'Esta versión de VS Code no permite leer en voz alta';
+  if (!hayVoz()) botonLeer.title = t('Esta versión de VS Code no permite leer en voz alta');
 }
 
 const esCampoEditable = (elemento) =>

@@ -7,6 +7,8 @@ const { armarResumen } = require('./src/resumen');
 const { armarHtmlDelVisor } = require('./src/plantilla');
 const { registrarArbolPracticos } = require('./src/arbolPracticos');
 const { registrarDecoraciones } = require('./src/decoraciones');
+const { registrarNovedades } = require('./src/novedades');
+const { t, textosParaElVisor } = require('./src/idioma');
 
 const DEMORA_GUARDADO_NOTAS_MS = 800;
 
@@ -64,6 +66,13 @@ class GuardadoDeNotas {
 // Preferencias de lectura (color de papel, guía de lectura): son de la persona,
 // no de un PDF, así que valen para todos los prácticos y se guardan en VS Code.
 const CLAVE_PREFERENCIAS = 'preferenciasLectura';
+
+// Los errores de src/exportarPdf.js vienen con un código; acá se dicen en el idioma de VS Code.
+function mensajeDeExportar(error) {
+  if (error.codigo === 'protegido') return t('el PDF está protegido con contraseña o restricciones, y no se puede modificar.');
+  if (error.codigo === 'ilegible') return t('no se pudo leer el PDF ({0}).', error.message);
+  return error.message;
+}
 
 class ProveedorVisorPdf {
   constructor(contextoExtension) {
@@ -133,10 +142,17 @@ class ProveedorVisorPdf {
         guardadoNotas.programar(mensaje.notas, mensaje.revision);
       } else if (mensaje.tipo === 'guardar-resaltados') {
         await this.guardarResaltados(documento.uri, mensaje.resaltados);
+      } else if (mensaje.tipo === 'guardar-marcadores') {
+        await this.guardarDato(documento.uri, { marcadores: mensaje.marcadores }, t('los marcadores'));
+      } else if (mensaje.tipo === 'guardar-progreso') {
+        // Leer no es modificar: el progreso no cambia la fecha de "última modificación".
+        await this.guardarDato(documento.uri, { progreso: mensaje.progreso }, t('el progreso'), { marcarActualizado: false });
       } else if (mensaje.tipo === 'guardar-preferencias') {
         await this.guardarPreferencias(mensaje.preferencias, webview);
       } else if (mensaje.tipo === 'exportar-resumen') {
         await this.exportarResumen(documento.uri, guardadoNotas);
+      } else if (mensaje.tipo === 'exportar-pdf' && Array.isArray(mensaje.resaltados)) {
+        await this.exportarPdf(documento.uri, mensaje.resaltados);
       } else if (mensaje.tipo === 'abrir-link' && typeof mensaje.url === 'string') {
         await this.abrirLink(mensaje.url);
       }
@@ -154,7 +170,15 @@ class ProveedorVisorPdf {
       await almacen.actualizarPractico(uriPdf, { resaltados });
     } catch (error) {
       // En pantalla los resaltados quedan igual; se vuelven a guardar con el próximo cambio.
-      vscode.window.showErrorMessage(`No se pudieron guardar los resaltados: ${error.message}`);
+      vscode.window.showErrorMessage(t('No se pudieron guardar los resaltados: {0}', error.message));
+    }
+  }
+
+  async guardarDato(uriPdf, cambios, queEs, opciones) {
+    try {
+      await almacen.actualizarPractico(uriPdf, cambios, opciones);
+    } catch (error) {
+      vscode.window.showErrorMessage(t('No se pudo guardar {0}: {1}', queEs, error.message));
     }
   }
 
@@ -167,18 +191,60 @@ class ProveedorVisorPdf {
       const nombrePdf = path.posix.basename(uriPdf.path);
       const carpeta = path.posix.dirname(uriPdf.path);
       const destino = await vscode.window.showSaveDialog({
-        title: 'Exportar resumen',
-        saveLabel: 'Guardar resumen',
-        defaultUri: uriPdf.with({ path: path.posix.join(carpeta, `${nombrePdf.replace(/\.pdf$/i, '')} - resumen.md`) }),
+        title: t('Exportar resumen'),
+        saveLabel: t('Guardar resumen'),
+        defaultUri: uriPdf.with({ path: path.posix.join(carpeta, t('{0} - resumen.md', nombrePdf.replace(/\.pdf$/i, ''))) }),
         filters: { Markdown: ['md'] }
       });
       if (!destino) return; // la persona canceló
 
-      await vscode.workspace.fs.writeFile(destino, new TextEncoder().encode(armarResumen(nombrePdf, practico)));
+      await vscode.workspace.fs.writeFile(destino, new TextEncoder().encode(armarResumen(nombrePdf, practico, t)));
       const documentoResumen = await vscode.workspace.openTextDocument(destino);
       await vscode.window.showTextDocument(documentoResumen, { viewColumn: vscode.ViewColumn.Beside, preview: false });
     } catch (error) {
-      vscode.window.showErrorMessage(`No se pudo exportar el resumen: ${error.message}`);
+      vscode.window.showErrorMessage(t('No se pudo exportar el resumen: {0}', error.message));
+    }
+  }
+
+  // Guarda una copia del PDF con los resaltados como anotaciones (ver src/exportarPdf.js).
+  async exportarPdf(uriPdf, resaltados) {
+    try {
+      const nombrePdf = path.posix.basename(uriPdf.path);
+      const carpeta = path.posix.dirname(uriPdf.path);
+      const destino = await vscode.window.showSaveDialog({
+        title: t('Guardar el PDF con los resaltados'),
+        saveLabel: t('Guardar PDF'),
+        defaultUri: uriPdf.with({ path: path.posix.join(carpeta, t('{0} - con resaltados.pdf', nombrePdf.replace(/\.pdf$/i, ''))) }),
+        filters: { PDF: ['pdf'] }
+      });
+      if (!destino) return; // la persona canceló
+      // El original queda como está: sus resaltados siguen en .practicos.json y, si
+      // además los tuviera adentro, se verían dos veces.
+      if (destino.toString().toLowerCase() === uriPdf.toString().toLowerCase()) {
+        vscode.window.showErrorMessage(t('Elegí otro nombre: el PDF con resaltados se guarda como una copia, sin tocar el original.'));
+        return;
+      }
+
+      // pdf-lib pesa medio mega: se carga recién cuando alguien exporta, no al abrir.
+      const { agregarResaltadosAlPdf } = require('./src/exportarPdf');
+      const original = await vscode.workspace.fs.readFile(uriPdf);
+      const { bytes, agregados } = await agregarResaltadosAlPdf(original, resaltados);
+      await vscode.workspace.fs.writeFile(destino, bytes);
+
+      const nombreDestino = path.posix.basename(destino.path);
+      const abrir = t('Abrir');
+      const mostrar = t('Mostrar en la carpeta');
+      const eleccion = await vscode.window.showInformationMessage(
+        agregados === 1
+          ? t('Se guardó "{0}" con 1 resaltado.', nombreDestino)
+          : t('Se guardó "{0}" con {1} resaltados.', nombreDestino, agregados),
+        abrir,
+        mostrar
+      );
+      if (eleccion === abrir) await vscode.commands.executeCommand('vscode.openWith', destino, 'visorPracticos.pdfViewer');
+      else if (eleccion === mostrar) await vscode.commands.executeCommand('revealFileInOS', destino);
+    } catch (error) {
+      vscode.window.showErrorMessage(t('No se pudo exportar el PDF: {0}', mensajeDeExportar(error)));
     }
   }
 
@@ -258,7 +324,7 @@ class ProveedorVisorPdf {
       // común; copiándolo a un Uint8Array puro llega como bytes al webview.
       webview.postMessage({ tipo: 'cargar-pdf', datos: new Uint8Array(bytes), vista });
     } catch (error) {
-      const mensajeError = `No se pudo leer el archivo PDF: ${error.message}`;
+      const mensajeError = t('No se pudo leer el archivo PDF: {0}', error.message);
       vscode.window.showErrorMessage(mensajeError);
       webview.postMessage({ tipo: 'error', mensaje: mensajeError });
     }
@@ -300,7 +366,9 @@ class ProveedorVisorPdf {
     // por la CSP, así que van en un bloque JSON no ejecutable que viewer.js lee.
     const configuracion = JSON.stringify({
       uriPdfjs: uriPdfjs.toString(),
-      uriPdfWorker: uriPdfWorker.toString()
+      uriPdfWorker: uriPdfWorker.toString(),
+      // Idioma del visor y sus textos traducidos (ver src/idioma.js).
+      ...textosParaElVisor()
     });
 
     return armarHtmlDelVisor({
@@ -317,6 +385,8 @@ function activate(contextoExtension) {
   contextoExtension.subscriptions.push(ProveedorVisorPdf.register(contextoExtension));
   registrarArbolPracticos(contextoExtension);
   registrarDecoraciones(contextoExtension);
+  // Si ya hay preferencias o vistas guardadas, la extensión se usaba de antes.
+  registrarNovedades(contextoExtension, (clave) => clave === CLAVE_PREFERENCIAS || clave.startsWith('vista:'));
 }
 
 function deactivate() {}

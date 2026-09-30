@@ -63,6 +63,22 @@ test('junta en un renglón el texto resaltado que cruzaba renglones', () => {
   assert.ok(md.includes('> de area *(amarillo)*'));
 });
 
+test('incluye el comentario de cada resaltado, debajo de su texto', () => {
+  const conComentario = { ...resaltado(1, 0, 'Teorema de Bolzano'), comentario: 'entra en el\nparcial **seguro**' };
+  const md = armarResumen('TP1.pdf', { estado: 'pendiente', notas: '', resaltados: [conComentario, resaltado(1, 40, 'otro')] });
+  assert.ok(
+    md.includes(
+      ['> Teorema de Bolzano *(amarillo)*', '>', '> **Comentario:** entra en el parcial **seguro**', '', '> otro *(amarillo)*'].join('\n')
+    ),
+    md
+  );
+});
+
+test('lista las páginas marcadas', () => {
+  const md = armarResumen('TP1.pdf', { estado: 'pendiente', notas: 'x', resaltados: [], marcadores: [4, 9] });
+  assert.ok(md.includes('- **Páginas marcadas:** 4, 9'));
+});
+
 test('incluye la fecha de la última modificación', () => {
   const md = armarResumen('TP1.pdf', { estado: 'en-progreso', notas: 'x', resaltados: [], actualizado: '2026-09-28T15:00:00Z' });
   assert.ok(md.includes('- **Estado:** En progreso'));

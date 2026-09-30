@@ -2,17 +2,18 @@
 // Son preferencias de la persona (no de un PDF): la extensión las guarda y las
 // aplica a todos los visores abiertos.
 import { hayVoz, listarVoces, alCambiarVoces, probarVoz } from './voz.js';
+import { t } from './idioma.js';
 
 const PREFERENCIAS_POR_DEFECTO = {
   papel: 'blanco',
   guia: false,
   altoGuia: 'media',
-  voz: '', // voiceURI de la voz elegida ('' = elegir una en español automáticamente)
+  voz: '', // voiceURI de la voz elegida ('' = elegir una del idioma de VS Code automáticamente)
   velocidadVoz: 1,
   consejoVisto: false
 };
 const VELOCIDADES = [0.75, 1, 1.25, 1.5];
-const PAPELES = ['blanco', 'crema', 'durazno', 'celeste', 'verde', 'gris'];
+const PAPELES = ['blanco', 'crema', 'durazno', 'celeste', 'verde', 'gris', 'oscuro'];
 // Alto de la franja con zoom 100%, en píxeles; se multiplica por el zoom
 // para que siempre abarque más o menos la misma cantidad de texto.
 const ALTOS_GUIA = { fina: 22, media: 34, ancha: 52 };
@@ -47,8 +48,9 @@ export function crearLectura({ visor, paginas, obtenerZoom, guardar }) {
     selectorVelocidad.value = String(preferencias.velocidadVoz);
     llenarVoces();
 
-    // viewer.css tiñe las páginas según este atributo.
+    // viewer.css tiñe las páginas según este atributo (y las miniaturas, con el de <html>).
     paginas.dataset.papel = preferencias.papel;
+    document.documentElement.dataset.papel = preferencias.papel;
     for (const opcion of opcionesPapel) {
       opcion.setAttribute('aria-checked', String(opcion.dataset.papel === preferencias.papel));
       opcion.tabIndex = opcion.dataset.papel === preferencias.papel ? 0 : -1;
@@ -78,7 +80,7 @@ export function crearLectura({ visor, paginas, obtenerZoom, guardar }) {
 
     const automatica = document.createElement('option');
     automatica.value = '';
-    automatica.textContent = 'Automática (español)';
+    automatica.textContent = t('Automática (español)');
     const opciones = voces.map((voz) => {
       const opcion = document.createElement('option');
       opcion.value = voz.voiceURI;

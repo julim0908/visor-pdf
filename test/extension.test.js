@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { UriFalsa, crearVscodeFalso, instalarVscodeFalso } = require('./ayudantes/vscode-falso');
+const { UriFalsa, crearVscodeFalso, crearContextoFalso, instalarVscodeFalso } = require('./ayudantes/vscode-falso');
 
 const { vscode, registro } = crearVscodeFalso();
 instalarVscodeFalso(vscode);
@@ -14,11 +14,7 @@ const carpeta = fs.mkdtempSync(path.join(os.tmpdir(), 'extension-'));
 test.after(() => fs.rmSync(carpeta, { recursive: true, force: true }));
 
 const estadoGlobal = new Map();
-extension.activate({
-  extensionUri: new UriFalsa(path.resolve(__dirname, '..')),
-  subscriptions: [],
-  globalState: { get: (k) => estadoGlobal.get(k), update: async (k, v) => estadoGlobal.set(k, v) }
-});
+extension.activate(crearContextoFalso(new UriFalsa(path.resolve(__dirname, '..')), estadoGlobal));
 
 // Abre un "visor" para tp1.pdf y devuelve una función para mandarle mensajes
 // como si vinieran del webview, más la lista de lo que la extensión le contestó.
