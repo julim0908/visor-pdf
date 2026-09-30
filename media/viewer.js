@@ -5,6 +5,7 @@ import { armarTextoPagina, normalizarConMapa, normalizarConsulta, buscarEnTexto 
 import { marcarEnCapa } from './marcas.js';
 import { crearLectura } from './lectura.js';
 import { crearResaltador } from './resaltador.js';
+import { crearHistorial } from './historial.js';
 import { resolverDestino, armarIndice, renderizarLinks } from './indice.js';
 import { crearLector, hayVoz } from './voz.js';
 import { crearMenuDesplegable } from './menus.js';
@@ -50,6 +51,8 @@ const panelIndice = document.getElementById('panel-indice');
 const listaIndice = document.getElementById('lista-indice');
 const botonVolver = document.getElementById('boton-volver');
 const botonExportar = document.getElementById('boton-exportar');
+const botonAtajos = document.getElementById('boton-atajos');
+const panelAtajos = document.getElementById('panel-atajos');
 
 const PASOS_ZOOM = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 const ZOOM_MINIMO = PASOS_ZOOM[0];
@@ -102,12 +105,17 @@ const lectura = crearLectura({
   guardar: (preferencias) => vscode.postMessage({ tipo: 'guardar-preferencias', preferencias })
 });
 
+// Lo que se puede deshacer con Ctrl+Z: resaltados, notas y el estado del documento.
+// (No confundir con estado.historial, que guarda las posiciones para "Volver".)
+const acciones = crearHistorial();
+
 // Lo que el resaltador necesita del visor.
 const resaltador = crearResaltador({
   paginas: () => estado.paginas,
   remarcarTodas: marcarTodas,
   irAMarca,
-  agregarLineaANotas,
+  agregarLineasANotas,
+  historial: acciones,
   enviar: (mensaje) => vscode.postMessage(mensaje),
   leerTramos: (tramos) => leerEnVozAlta(tramos),
   // Si ya resaltó algo, el consejo de cómo resaltar no hace más falta.
@@ -195,6 +203,7 @@ async function iniciar() {
     configurarSeleccion();
     configurarIndice();
     configurarVoz();
+    configurarDeshacer();
 
     // Avisamos a la extensión que ya podemos recibir el PDF.
     vscode.postMessage({ tipo: 'listo' });
@@ -540,11 +549,90 @@ function mostrarDatosPractico(practico) {
     : 'No se pudieron leer los datos de este documento';
 }
 
-function cambiarEstadoPractico(estadoNuevo) {
+function cambiarEstadoPractico(estadoNuevo, { registrar = true } = {}) {
+  const anterior = botonesEstado.find((b) => b.getAttribute('aria-checked') === 'true');
   // Lo mostramos al instante; la extensión responde con lo que realmente quedó
   // guardado (y si falló, eso vuelve el botón a como estaba).
   mostrarDatosPractico({ estado: estadoNuevo });
   vscode.postMessage({ tipo: 'cambiar-estado', estado: estadoNuevo });
+  if (registrar && anterior && anterior.dataset.estado !== estadoNuevo) {
+    const estadoAnterior = anterior.dataset.estado;
+    acciones.registrar({
+      descripcion: 'cambio de estado',
+      deshacer: () => cambiarEstadoPractico(estadoAnterior, { registrar: false }),
+      rehacer: () => cambiarEstadoPractico(estadoNuevo, { registrar: false })
+    });
+  }
+}
+
+// ---------- Deshacer / rehacer ----------
+
+const avisoAccion = document.getElementById('aviso-accion');
+let temporizadorAvisoAccion = null;
+
+function mostrarAvisoAccion(texto) {
+  avisoAccion.textContent = texto;
+  avisoAccion.classList.remove('oculto');
+  clearTimeout(temporizadorAvisoAccion);
+  temporizadorAvisoAccion = setTimeout(() => avisoAccion.classList.add('oculto'), 2200);
+}
+
+function deshacer() {
+  const accion = acciones.deshacer();
+  mostrarAvisoAccion(accion ? `Deshecho: ${accion.descripcion}` : 'No hay nada para deshacer');
+}
+
+function rehacer() {
+  const accion = acciones.rehacer();
+  mostrarAvisoAccion(accion ? `Rehecho: ${accion.descripcion}` : 'No hay nada para rehacer');
+}
+
+// Dentro de VS Code, Ctrl+Z a veces no llega como tecla: el editor la intercepta y
+// le pide al webview document.execCommand('undo'). Atendemos las dos vías, y como
+// a veces llegan ambas por la misma pulsación, ignoramos la segunda si es inmediata.
+let ultimoDeshacer = { tipo: null, hora: 0 };
+
+// Campos con su propio deshacer (búsqueda, número de página): ahí no nos metemos.
+// Las notas no cuentan: usan el historial general.
+const tieneDeshacerPropio = (elemento) =>
+  elemento !== campoNotas &&
+  elemento instanceof HTMLElement &&
+  (elemento.matches('textarea, input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=button])') ||
+    elemento.isContentEditable);
+
+function atenderDeshacer(tipo) {
+  const ahora = Date.now();
+  if (ultimoDeshacer.tipo === tipo && ahora - ultimoDeshacer.hora < 150) return;
+  ultimoDeshacer = { tipo, hora: ahora };
+  if (tipo === 'undo') deshacer();
+  else rehacer();
+}
+
+function configurarDeshacer() {
+  document.addEventListener(
+    'keydown',
+    (evento) => {
+      if (!(evento.ctrlKey || evento.metaKey) || evento.altKey) return;
+      const tecla = evento.key.toLowerCase();
+      const esDeshacer = tecla === 'z' && !evento.shiftKey;
+      const esRehacer = tecla === 'y' || (tecla === 'z' && evento.shiftKey);
+      if (!esDeshacer && !esRehacer) return;
+      if (tieneDeshacerPropio(evento.target)) return;
+      evento.preventDefault();
+      atenderDeshacer(esDeshacer ? 'undo' : 'redo');
+    },
+    true
+  );
+
+  const execCommandOriginal = document.execCommand.bind(document);
+  document.execCommand = (comando, ...resto) => {
+    const nombre = String(comando).toLowerCase();
+    if ((nombre === 'undo' || nombre === 'redo') && !tieneDeshacerPropio(document.activeElement)) {
+      atenderDeshacer(nombre);
+      return true;
+    }
+    return execCommandOriginal(comando, ...resto);
+  };
 }
 
 // ---------- Notas ----------
@@ -584,18 +672,103 @@ function alEditarNotas() {
   actualizarListaAnclas();
 }
 
-// Agrega una línea al final de las notas (y abre el panel para que se vea).
-function agregarLineaANotas(linea) {
-  if (campoNotas.disabled) return;
+// --- Historial de las notas (para Ctrl+Z) ---
+
+const fotoNotas = () => ({ valor: campoNotas.value, inicio: campoNotas.selectionStart, fin: campoNotas.selectionEnd });
+
+// Vuelve las notas a como estaban en `foto` (sin registrar nada nuevo).
+function aplicarNotas(foto) {
   if (!estado.panelNotasVisible) {
     mostrarPanelNotas(true);
     guardarVista();
   }
-  const texto = campoNotas.value;
-  const separador = texto === '' || texto.endsWith('\n') ? '' : '\n';
-  campoNotas.value = `${texto}${separador}${linea}`;
-  campoNotas.scrollTop = campoNotas.scrollHeight;
+  campoNotas.value = foto.valor;
+  campoNotas.setSelectionRange(foto.inicio, foto.fin);
+  rafagaDeEscritura = null;
   alEditarNotas();
+}
+
+// Cambia las notas desde el código (anclar, "A notas", borrar una nota) dejando
+// el cambio en el historial. `cambio()` modifica campoNotas.
+function modificarNotas(descripcion, cambio) {
+  if (campoNotas.disabled) return;
+  const antes = fotoNotas();
+  cambio();
+  const despues = fotoNotas();
+  if (despues.valor === antes.valor) return;
+  acciones.registrar({ descripcion, deshacer: () => aplicarNotas(antes), rehacer: () => aplicarNotas(despues) });
+  rafagaDeEscritura = null;
+  alEditarNotas();
+}
+
+// Lo que se escribe de corrido (sin pausas de más de un segundo) se deshace de una
+// vez, como en cualquier editor. Esta es la acción del historial que se va armando.
+let rafagaDeEscritura = null;
+const PAUSA_ENTRE_RAFAGAS_MS = 1000;
+
+function registrarEscritura(evento) {
+  // El deshacer propio del campo (por ejemplo desde el menú contextual) no conoce el
+  // resto del historial: lo cambiamos por el nuestro.
+  if (evento.inputType === 'historyUndo' || evento.inputType === 'historyRedo') {
+    evento.preventDefault();
+    atenderDeshacer(evento.inputType === 'historyUndo' ? 'undo' : 'redo');
+    return;
+  }
+  const borrando = evento.inputType.startsWith('delete');
+  const ahora = Date.now();
+  const sigue =
+    rafagaDeEscritura &&
+    acciones.ultima() === rafagaDeEscritura &&
+    rafagaDeEscritura.borrando === borrando &&
+    ahora - rafagaDeEscritura.hora < PAUSA_ENTRE_RAFAGAS_MS &&
+    evento.inputType !== 'insertLineBreak' &&
+    !evento.inputType.startsWith('insertFrom'); // pegar o arrastrar: acción aparte
+  if (sigue) {
+    rafagaDeEscritura.hora = ahora;
+    return;
+  }
+  const accion = {
+    descripcion: borrando ? 'borrado en las notas' : 'escritura en las notas',
+    borrando,
+    hora: ahora,
+    antes: fotoNotas(),
+    despues: null,
+    deshacer() {
+      // Lo escrito recién se "saca la foto" al deshacer: hasta ahí seguía creciendo.
+      if (!accion.despues) accion.despues = fotoNotas();
+      aplicarNotas(accion.antes);
+    },
+    rehacer: () => aplicarNotas(accion.despues)
+  };
+  acciones.registrar(accion);
+  rafagaDeEscritura = accion;
+}
+
+// Agrega líneas al final de las notas (y abre el panel para que se vean).
+function agregarLineasANotas(lineas) {
+  if (campoNotas.disabled || lineas.length === 0) return;
+  if (!estado.panelNotasVisible) {
+    mostrarPanelNotas(true);
+    guardarVista();
+  }
+  modificarNotas('texto pasado a las notas', () => {
+    const texto = campoNotas.value;
+    const separador = texto === '' || texto.endsWith('\n') ? '' : '\n';
+    campoNotas.value = `${texto}${separador}${lineas.join('\n')}`;
+    campoNotas.setSelectionRange(campoNotas.value.length, campoNotas.value.length);
+  });
+  campoNotas.scrollTop = campoNotas.scrollHeight;
+}
+
+// Borra una línea de las notas (la de índice `numeroLinea`).
+function borrarLineaDeNotas(numeroLinea) {
+  modificarNotas('nota borrada', () => {
+    const lineas = campoNotas.value.split('\n');
+    lineas.splice(numeroLinea, 1);
+    const inicio = lineas.slice(0, numeroLinea).join('\n').length;
+    campoNotas.value = lineas.join('\n');
+    campoNotas.setSelectionRange(inicio, inicio);
+  });
 }
 
 function confirmarGuardadoNotas(revision, guardadoOk) {
@@ -619,9 +792,10 @@ function anclarLineaActual() {
   const finLinea = saltoSiguiente === -1 ? texto.length : saltoSiguiente;
 
   const lineaSinAncla = quitarAncla(texto.slice(inicioLinea, finLinea));
-  campoNotas.setRangeText(`[pág. ${estado.paginaActual}] ${lineaSinAncla}`, inicioLinea, finLinea, 'end');
+  modificarNotas(`nota anclada a la pág. ${estado.paginaActual}`, () => {
+    campoNotas.setRangeText(`[pág. ${estado.paginaActual}] ${lineaSinAncla}`, inicioLinea, finLinea, 'end');
+  });
   campoNotas.focus();
-  alEditarNotas();
 }
 
 // Arma la lista de líneas ancladas. Todo con textContent (nunca innerHTML),
@@ -629,9 +803,9 @@ function anclarLineaActual() {
 function actualizarListaAnclas() {
   listaAnclas.replaceChildren();
 
-  for (const linea of campoNotas.value.split('\n')) {
+  campoNotas.value.split('\n').forEach((linea, numeroLinea) => {
     const coincidencia = linea.match(PATRON_ANCLA);
-    if (!coincidencia) continue;
+    if (!coincidencia) return;
     const pagina = Number(coincidencia[1]);
 
     const etiqueta = document.createElement('span');
@@ -648,10 +822,19 @@ function actualizarListaAnclas() {
     boton.append(etiqueta, resumen);
     boton.addEventListener('click', () => irAPagina(pagina));
 
+    const botonBorrar = document.createElement('button');
+    botonBorrar.className = 'quitar-item';
+    botonBorrar.textContent = '×';
+    botonBorrar.title = 'Borrar esta nota (se puede deshacer con Ctrl+Z)';
+    botonBorrar.setAttribute('aria-label', `Borrar la nota de la página ${pagina}: ${resumen.textContent}`);
+    botonBorrar.disabled = campoNotas.disabled;
+    botonBorrar.addEventListener('click', () => borrarLineaDeNotas(numeroLinea));
+
     const item = document.createElement('li');
-    item.append(boton);
+    item.className = 'item-con-quitar';
+    item.append(boton, botonBorrar);
     listaAnclas.append(item);
-  }
+  });
 
   ayudaAnclas.classList.toggle('oculto', listaAnclas.childElementCount > 0);
   botonNotas.classList.toggle('tiene-notas', campoNotas.value.trim() !== '');
@@ -663,6 +846,7 @@ function configurarNotas() {
     if (estado.panelNotasVisible && !campoNotas.disabled) campoNotas.focus();
     guardarVista();
   });
+  campoNotas.addEventListener('beforeinput', registrarEscritura);
   campoNotas.addEventListener('input', alEditarNotas);
   botonAnclar.addEventListener('click', anclarLineaActual);
 }
@@ -913,6 +1097,17 @@ function configurarSeleccion() {
         rango.compareBoundaryPoints(Range.START_TO_END, rangoAnterior) === 0);
     let ancla = cambiaElInicio ? rango.startContainer : rango.endContainer;
     if (ancla.nodeType === Node.TEXT_NODE) ancla = ancla.parentNode;
+    // Si el punto cae dentro de una marca (resaltado, búsqueda, lectura), subimos
+    // hasta el renglón: si .endOfContent quedara adentro del renglón, taparía el
+    // texto marcado y ya no se podría seleccionar.
+    while (
+      ancla.parentElement &&
+      !ancla.parentElement.classList.contains('textLayer') &&
+      !ancla.parentElement.classList.contains('markedContent') &&
+      ancla.parentElement.closest('.textLayer')
+    ) {
+      ancla = ancla.parentElement;
+    }
 
     const capa = ancla.parentElement && ancla.parentElement.closest('.textLayer');
     const finDeContenido = capasSeleccionables.get(capa);
@@ -1129,12 +1324,32 @@ function configurarBarra() {
 
   botonPaginaAnterior.addEventListener('click', () => irAPagina(estado.paginaActual - 1));
   botonPaginaSiguiente.addEventListener('click', () => irAPagina(estado.paginaActual + 1));
-  // RePág / AvPág cambian de página (salvo mientras se escribe en un campo).
+  // RePág / AvPág cambian de página y + / − el zoom (salvo mientras se escribe en un campo).
   document.addEventListener('keydown', (evento) => {
-    if (evento.key !== 'PageDown' && evento.key !== 'PageUp') return;
     if (esCampoEditable(evento.target) || estado.paginas.length === 0) return;
+    if (evento.key === 'PageDown' || evento.key === 'PageUp') {
+      evento.preventDefault();
+      irAPagina(estado.paginaActual + (evento.key === 'PageDown' ? 1 : -1));
+    } else if (!evento.ctrlKey && !evento.metaKey && !evento.altKey && ['+', '=', '-'].includes(evento.key)) {
+      evento.preventDefault();
+      cambiarZoom(siguientePasoZoom(evento.key === '-' ? -1 : +1), 'manual');
+    }
+  });
+
+  // Panel de atajos: con su botón o con "?".
+  const menuAtajos = crearMenuDesplegable(botonAtajos, panelAtajos);
+  const abrirAtajos = () => {
+    menuAtajos.abrir();
+    panelAtajos.focus();
+  };
+  botonAtajos.addEventListener('click', () => {
+    if (menuAtajos.estaAbierto()) panelAtajos.focus();
+  });
+  document.addEventListener('keydown', (evento) => {
+    if (evento.key !== '?' || evento.ctrlKey || evento.metaKey || evento.altKey || esCampoEditable(evento.target)) return;
     evento.preventDefault();
-    irAPagina(estado.paginaActual + (evento.key === 'PageDown' ? 1 : -1));
+    if (menuAtajos.estaAbierto()) menuAtajos.cerrar(true);
+    else abrirAtajos();
   });
 
   botonCerrarConsejo.addEventListener('click', cerrarConsejo);

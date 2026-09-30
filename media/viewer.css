@@ -51,6 +51,115 @@ body {
   position: relative;
 }
 
+/* Teclas escritas en los textos (consejo, franjas, panel de atajos). */
+kbd {
+  display: inline-block;
+  min-width: 1.2em;
+  padding: 0 4px;
+  border: 1px solid var(--vscode-keybindingLabel-border, var(--vscode-panel-border, currentColor));
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 0.9em;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--vscode-keybindingLabel-foreground, inherit);
+  background: var(--vscode-keybindingLabel-background, transparent);
+}
+
+/* ---------- Panel de atajos de teclado ---------- */
+
+#grupo-atajos {
+  position: relative;
+}
+
+#panel-atajos {
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(640px, calc(100vw - 24px));
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+
+#panel-atajos:focus {
+  outline: none;
+}
+
+.panel-atajos-encabezado {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-bottom: 8px;
+}
+
+.columnas-atajos {
+  columns: 2 260px;
+  column-gap: 20px;
+}
+
+.columnas-atajos section {
+  break-inside: avoid;
+  margin-bottom: 10px;
+}
+
+.columnas-atajos h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-textLink-foreground);
+}
+
+.columnas-atajos dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 10px;
+  margin: 0;
+  align-items: baseline;
+}
+
+.columnas-atajos dt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: baseline;
+}
+
+.columnas-atajos dd {
+  margin: 0;
+  font-size: 12px;
+}
+
+.separador-teclas {
+  margin: 0 3px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* Tecla chiquita dentro de un botón (menú de la selección). */
+kbd.tecla-mini {
+  min-width: 0;
+  margin-left: 4px;
+  padding: 0 3px;
+  border-bottom-width: 1px;
+  font-size: 10px;
+  line-height: 1.3;
+  opacity: 0.75;
+}
+
+/* En los botones con fondo blanco (muestras de color), la tecla va en gris oscuro. */
+#menu-resaltar .boton-color kbd.tecla-mini {
+  color: #444444;
+  border-color: #bbbbbb;
+  background: transparent;
+}
+
+#menu-resaltar .separador {
+  height: 18px;
+  margin: 0 2px;
+}
+
 /* Íconos SVG: toman el color del texto del tema. */
 .icono {
   width: 16px;
@@ -145,6 +254,24 @@ body {
 .color-rosa { background: #d70073; }
 .color-celeste { background: #006edc; }
 
+/* Con el borrador elegido, la muestra del botón es una goma. */
+.muestra-color.color-borrar {
+  background: repeating-linear-gradient(45deg, #ffffff 0 2px, #d0d0d0 2px 4px);
+}
+
+.separador-menu {
+  height: 1px;
+  margin: 2px 4px;
+  background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border, currentColor));
+  opacity: 0.6;
+}
+
+.opcion-color .muestra-borrador {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 22px;
+}
+
 /* Mientras se lee, el botón "Leer" muestra pausa o seguir según corresponda. */
 #boton-leer .icono-pausa,
 #boton-leer .icono-seguir,
@@ -221,10 +348,6 @@ body {
 
 .opcion-color kbd {
   margin-left: auto;
-  padding: 0 5px;
-  border: 1px solid var(--vscode-panel-border, currentColor);
-  border-radius: 3px;
-  font: inherit;
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
@@ -255,6 +378,27 @@ body {
 #aviso-modo {
   color: var(--vscode-button-foreground);
   background: var(--vscode-button-background);
+}
+
+#aviso-modo.borrador {
+  color: var(--vscode-inputValidation-errorForeground, var(--vscode-foreground));
+  background: var(--vscode-inputValidation-errorBackground, var(--vscode-editorWidget-background));
+}
+
+#aviso-modo #texto-aviso-modo {
+  flex: 1;
+}
+
+#aviso-modo .atajos-modo {
+  margin-left: 10px;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+#aviso-modo kbd {
+  color: inherit;
+  border-color: currentColor;
+  background: transparent;
 }
 
 #aviso-modo button {
@@ -569,6 +713,31 @@ body.vscode-high-contrast-light .icono-estado.para-claro {
 #menu-resaltar .boton-color[aria-pressed='true'] {
   outline: 2px solid var(--vscode-focusBorder);
   outline-offset: 1px;
+}
+
+/* "Quitar resaltado": aparece si la selección toca algo ya resaltado. */
+#menu-resaltar .boton-quitar-resaltado {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  color: var(--vscode-errorForeground, inherit);
+}
+
+/* Aviso de lo que se deshizo o rehizo (Ctrl+Z / Ctrl+Y). */
+#aviso-accion {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  z-index: 30;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border: 1px solid var(--vscode-widget-border, transparent);
+  border-radius: 4px;
+  color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+  background: var(--vscode-editorWidget-background);
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgb(0 0 0 / 0.3));
+  pointer-events: none;
 }
 
 .muestra-marca {
@@ -982,6 +1151,43 @@ body.vscode-high-contrast-light .icono-estado.para-claro {
 
 #panel-notas button.ancla:hover {
   background: var(--vscode-list-hoverBackground);
+}
+
+/* Cada nota o resaltado de la lista lleva su "×" para quitarlo. */
+#panel-notas .item-con-quitar {
+  display: flex;
+  align-items: center;
+}
+
+#panel-notas .item-con-quitar button.ancla {
+  flex: 1;
+  min-width: 0;
+}
+
+#panel-notas button.quitar-item {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  opacity: 0.5;
+}
+
+#panel-notas .item-con-quitar:hover button.quitar-item,
+#panel-notas button.quitar-item:focus-visible {
+  opacity: 1;
+}
+
+#panel-notas button.quitar-item:hover {
+  color: var(--vscode-errorForeground, inherit);
+  background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+}
+
+#panel-notas button.quitar-item:disabled {
+  display: none;
 }
 
 /* La muestra del resaltado se dibuja sobre "papel" para que se vea igual que en el PDF. */

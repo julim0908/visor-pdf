@@ -2,7 +2,7 @@
   "name": "visor-de-practicos",
   "displayName": "Visor PDF",
   "description": "Visor de PDF para VS Code: leé, buscá, resaltá, escuchá en voz alta y tomá notas en cualquier PDF.",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "publisher": "JulietaMontenegro",
   "license": "MIT",
   "repository": {

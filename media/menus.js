@@ -33,9 +33,10 @@ export function crearMenuDesplegable(boton, menu) {
       return;
     }
     const paso = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[evento.key];
-    if (!paso) return;
-    evento.preventDefault();
     const lista = opciones();
+    // Sin opciones (un panel de solo lectura), las flechas desplazan como siempre.
+    if (!paso || lista.length === 0) return;
+    evento.preventDefault();
     const indice = lista.indexOf(document.activeElement);
     lista[(indice + paso + lista.length) % lista.length].focus();
   });

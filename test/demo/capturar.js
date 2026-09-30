@@ -530,7 +530,12 @@ function portadaHtml(logoBase64, capturaBase64) {
 </body></html>`;
 }
 
-main().catch((error) => {
-  console.error('Error:', error.message);
-  process.exitCode = 1;
-});
+// Las piezas se reutilizan en otras pruebas que manejan el visor en Chrome.
+module.exports = { Cdp, AYUDANTES, buscarChrome, matar, esperar, esperarServidor, conBanco, PUERTO_CHROME, URL_VISOR };
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error('Error:', error.message);
+    process.exitCode = 1;
+  });
+}

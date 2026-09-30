@@ -35,26 +35,38 @@ color de papel, guía de lectura y lectura en voz alta.
   tildes, así que "pagina" encuentra "Página". `Enter` va a la siguiente
   coincidencia, `Shift+Enter` a la anterior y `Esc` borra la búsqueda.
   Los PDFs escaneados son imágenes, así que no tienen texto para buscar ni copiar.
-- **Atajos**: `RePág` / `AvPág` cambian de página, `Ctrl+F` busca, `Alt+←` vuelve
-  después de seguir un link.
+- **Atajos**: apretá `?` (o el botón del teclado en la barra) para verlos todos.
+  Los principales: `RePág` / `AvPág` cambian de página, `+` / `−` el zoom,
+  `Ctrl+F` busca, `Alt+←` vuelve después de seguir un link y `Ctrl+Z` deshace.
+  Con texto seleccionado: `1`–`4` resaltan, `R` resalta con el color elegido,
+  `N` lo pasa a las notas, `L` lo lee y `Supr` quita el resaltado (cada botón
+  del menú muestra su tecla).
 
 ### Resaltar y tomar notas
 
 - **Resaltador**: seleccioná texto y elegí un color en el menú que aparece (o
   apretá `1`–`4`). Cada color tiene además su propia forma, para distinguirlos
   sin depender del color: amarillo es fondo, verde subrayado, rosa doble
-  subrayado y celeste subrayado punteado. Con un click sobre un resaltado le
-  cambiás el color o lo quitás (`Supr`). *A notas* copia el texto a tus notas,
+  subrayado y celeste subrayado punteado. *A notas* copia el texto a tus notas,
   anclado a su página. Todos quedan listados en el panel de notas.
+  - *Quitar resaltados*: con un click sobre un resaltado le cambiás el color o
+    lo quitás entero con **Quitar resaltado** (o `Supr`). Si seleccionás solo
+    una parte de algo resaltado, ese botón quita solo esa parte. En la lista del
+    panel de notas cada resaltado tiene su **×**.
   - *Modo resaltador*: el botón **Resaltar** de la barra funciona como un
     marcador. Si no hay nada seleccionado, lo activa, y todo lo que selecciones
     se resalta directo con el color elegido (la flecha al lado cambia el color).
-    `Esc` sale del modo.
+    En esa misma flecha está el **Borrador** (`5`): lo que selecciones con él
+    deja de estar resaltado. `Esc` sale del modo.
+- **Deshacer**: `Ctrl+Z` deshace lo último que hiciste (un resaltado, una goma,
+  lo que escribiste en las notas, una nota borrada o un cambio de estado) y
+  `Ctrl+Y` lo vuelve a hacer.
 - **Notas**: el botón *Notas* abre un panel al costado. Se guardan solas
   mientras escribís.
 - **Notas ancladas a una página**: cualquier línea que tenga `[pág. 5]` queda
   anclada a esa página. El botón *Anclar a pág. X* agrega la etiqueta con la
-  página que estás viendo, y en *Notas por página* hacés click para saltar ahí.
+  página que estás viendo, y en *Notas por página* hacés click para saltar ahí
+  o la borrás con su **×**.
 - **Exportar resumen**: al final del panel de notas, guarda un archivo Markdown
   con tus notas y resaltados ordenados por página, para repasar o compartir.
 
