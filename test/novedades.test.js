@@ -27,12 +27,21 @@ test('quien usaba una versión que no guardaba la última vista también recibe 
   assert.equal(textoDelAviso({ ultimaVista: undefined, versionActual: '2.0.0', yaLaUsaba: true, novedades }), 'cosas nuevas');
 });
 
-test('una versión sin novedades anotadas no muestra nada', () => {
-  assert.equal(textoDelAviso({ ultimaVista: '1.0.0', versionActual: '2.0.1', yaLaUsaba: true, novedades }), null);
+test('un arreglo chico sin novedades propias no vuelve a mostrar las anteriores', () => {
+  assert.equal(textoDelAviso({ ultimaVista: '2.0.0', versionActual: '2.0.1', yaLaUsaba: true, novedades }), null);
 });
 
-test('la versión del package.json tiene sus novedades anotadas', () => {
-  assert.ok(NOVEDADES[version], `falta el texto de ${version} en src/novedades.js`);
+test('quien salta varias versiones ve las novedades que no vio', () => {
+  assert.equal(textoDelAviso({ ultimaVista: '1.0.0', versionActual: '2.0.1', yaLaUsaba: true, novedades }), 'cosas nuevas');
+});
+
+test('con varias versiones sin ver, muestra la más nueva (y no una futura)', () => {
+  const varias = { '1.5.0': 'viejo', '1.10.0': 'nuevo', '3.0.0': 'futuro' };
+  assert.equal(textoDelAviso({ ultimaVista: '1.0.0', versionActual: '2.0.0', yaLaUsaba: true, novedades: varias }), 'nuevo');
+});
+
+test('quien viene de 0.5.0 ve las novedades al instalar la versión del package.json', () => {
+  assert.ok(textoDelAviso({ ultimaVista: undefined, versionActual: version, yaLaUsaba: true, novedades: NOVEDADES }));
 });
 
 test('con la extensión en uso: avisa una vez y "Ver novedades" abre el CHANGELOG', async () => {

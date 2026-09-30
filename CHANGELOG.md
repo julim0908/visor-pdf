@@ -1,5 +1,13 @@
 # Novedades de Visor PDF
 
+## 0.6.1
+
+- La barra deja el estado, los atajos y *Notas* juntos a la derecha, también
+  en editores angostos (donde el estado muestra solo su ícono).
+- Ícono nuevo para *En progreso*, con el mismo estilo que *Pendiente* y *Hecho*.
+- En la lista de resaltados, el texto ya no baja a otro renglón.
+- Quien actualiza salteando versiones ve igual las novedades que se perdió.
+
 ## 0.6.0
 
 - **Comentarios en los resaltados**: hacé click en un resaltado y tocá

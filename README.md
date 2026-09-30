@@ -137,7 +137,7 @@ En VS Code, abrí la vista de extensiones (`Ctrl+Shift+X`), buscá
 También desde una terminal:
 
 ```
-code --install-extension visor-de-practicos-0.6.0.vsix
+code --install-extension visor-de-practicos-0.6.1.vsix
 ```
 
 ## Dónde se guardan tus datos
