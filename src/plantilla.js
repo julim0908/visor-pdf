@@ -218,18 +218,22 @@ function armarHtmlDelVisor({ cspSource, uriViewerCss, uriViewerJs, uriIcono, con
       <p id="sin-voces" class="menu-ayuda oculto">${t('No hay voces instaladas. En Windows se agregan en Configuración → Hora e idioma → Voz.')}</p>
     </div>
   </div>
-  <div class="grupo" id="grupo-estado">
-    <button id="boton-estado" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-estado" title="${t('Estado del documento')}" disabled><span id="icono-estado-actual"></span><span id="texto-estado-actual">${t('Pendiente')}</span>${ICONOS.desplegar}</button>
-    <div id="menu-estado" class="menu-flotante menu-lista oculto" role="menu" aria-label="${t('Estado del documento')}">${opcionesEstado}</div>
-  </div>
-  <!-- Notas va a la derecha de todo, justo arriba de donde se abre su panel. -->
-  <div class="grupo" id="grupo-atajos">
-    <button id="boton-atajos" class="boton-icono" aria-haspopup="dialog" aria-expanded="false" aria-controls="panel-atajos" aria-keyshortcuts="?" title="${t('Atajos de teclado (?)')}" aria-label="${t('Atajos de teclado')}">${ICONOS.teclado}</button>
-    <div id="panel-atajos" class="menu-flotante oculto" role="dialog" aria-label="${t('Atajos de teclado')}" tabindex="-1">
-      <div class="panel-atajos-encabezado"><span class="menu-titulo">${t('Atajos de teclado')}</span><span class="menu-ayuda">${t('No funcionan mientras escribís en las notas o en el buscador.')}</span></div>
-      <div class="columnas-atajos">${atajosHtml()}</div>
+  <!-- Estado, atajos y Notas van juntos a la derecha: si la barra no entra en un
+       renglón, bajan los tres juntos y siguen a la derecha, arriba del panel de notas. -->
+  <div class="lado-derecho">
+    <div class="grupo" id="grupo-estado">
+      <button id="boton-estado" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-estado" title="${t('Estado del documento')}" disabled><span id="icono-estado-actual"></span><span id="texto-estado-actual">${t('Pendiente')}</span>${ICONOS.desplegar}</button>
+      <div id="menu-estado" class="menu-flotante menu-lista oculto" role="menu" aria-label="${t('Estado del documento')}">${opcionesEstado}</div>
     </div>
-    <button id="boton-notas" class="boton-icono con-etiqueta" aria-pressed="false" aria-controls="panel-notas" title="${t('Notas y resaltados de este documento')}">${ICONOS.notas}<span class="etiqueta">${t('Notas')}</span></button>
+    <!-- Notas va a la derecha de todo, justo arriba de donde se abre su panel. -->
+    <div class="grupo" id="grupo-atajos">
+      <button id="boton-atajos" class="boton-icono" aria-haspopup="dialog" aria-expanded="false" aria-controls="panel-atajos" aria-keyshortcuts="?" title="${t('Atajos de teclado (?)')}" aria-label="${t('Atajos de teclado')}">${ICONOS.teclado}</button>
+      <div id="panel-atajos" class="menu-flotante oculto" role="dialog" aria-label="${t('Atajos de teclado')}" tabindex="-1">
+        <div class="panel-atajos-encabezado"><span class="menu-titulo">${t('Atajos de teclado')}</span><span class="menu-ayuda">${t('No funcionan mientras escribís en las notas o en el buscador.')}</span></div>
+        <div class="columnas-atajos">${atajosHtml()}</div>
+      </div>
+      <button id="boton-notas" class="boton-icono con-etiqueta" aria-pressed="false" aria-controls="panel-notas" title="${t('Notas y resaltados de este documento')}">${ICONOS.notas}<span class="etiqueta">${t('Notas')}</span></button>
+    </div>
   </div>
 </div>
 <div id="aviso-modo" class="franja-aviso oculto" role="status">

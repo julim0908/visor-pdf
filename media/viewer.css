@@ -46,8 +46,16 @@ body {
 }
 
 /* El estado del práctico va a la derecha de todo. */
-#grupo-estado {
+/* Estado, atajos y Notas van juntos a la derecha de todo. Si la barra no entra en
+   un renglón, bajan juntos y siguen a la derecha (arriba del panel de notas). */
+.lado-derecho {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#grupo-estado {
   position: relative;
 }
 
@@ -209,6 +217,15 @@ kbd.tecla-mini {
 @media (max-width: 1050px) {
   #barra-herramientas .etiqueta {
     display: none;
+  }
+
+  /* El estado queda solo con su ícono (el nombre está en el menú y al pasar el mouse). */
+  #texto-estado-actual {
+    display: none;
+  }
+
+  #campo-busqueda {
+    width: 120px;
   }
 }
 
@@ -1391,6 +1408,11 @@ html:not([data-papel='blanco'], [data-papel='oscuro']) .hoja-miniatura canvas {
   flex-wrap: wrap;
 }
 
+/* Con comentario el item tiene dos renglones: los botones quedan a la altura del primero. */
+#panel-notas #lista-resaltados .item-con-quitar {
+  align-items: flex-start;
+}
+
 #lista-resaltados .comentario-item {
   flex-basis: 100%;
   margin-left: 30px;
@@ -1476,7 +1498,11 @@ html:not([data-papel='blanco'], [data-papel='oscuro']) .hoja-miniatura canvas {
   font-variant-numeric: tabular-nums;
 }
 
+/* Ocupa lo que queda del renglón y se corta con "…": así nunca baja a otra línea
+   (en la lista de resaltados solo el comentario va abajo). */
 .texto-ancla {
+  flex: 1 1 0;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
